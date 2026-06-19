@@ -8,6 +8,73 @@ function getItemName(item) {
   return item.name || item.description || "-";
 }
 
+function SortIcon({ active, direction }) {
+  if (!active) {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M8 7L12 3L16 7"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M12 3V21"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          d="M8 17L12 21L16 17"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+      {direction === "asc" ? (
+        <>
+          <path
+            d="M7 10L12 5L17 10"
+            stroke="currentColor"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 5V19"
+            stroke="currentColor"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+          />
+        </>
+      ) : (
+        <>
+          <path
+            d="M7 14L12 19L17 14"
+            stroke="currentColor"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 5V19"
+            stroke="currentColor"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+          />
+        </>
+      )}
+    </svg>
+  );
+}
+
 function FullHistoryTable({ items = [] }) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -15,6 +82,9 @@ function FullHistoryTable({ items = [] }) {
     key: "index",
     direction: "asc",
   });
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
 
   const visibleColumns = useMemo(() => {
     const columns = [
@@ -81,7 +151,10 @@ function FullHistoryTable({ items = [] }) {
       }
 
       if (key === "date") {
-        return String(a.date || "").localeCompare(String(b.date || "")) * directionValue;
+        return (
+          String(a.date || "").localeCompare(String(b.date || "")) *
+          directionValue
+        );
       }
 
       const aValue = String(a[key] || "").toLowerCase();
@@ -90,6 +163,31 @@ function FullHistoryTable({ items = [] }) {
       return aValue.localeCompare(bValue) * directionValue;
     });
   }, [items, periodFilter, typeFilter, sortConfig]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredAndSortedItems.length / rowsPerPage)
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    periodFilter,
+    typeFilter,
+    rowsPerPage,
+    sortConfig.key,
+    sortConfig.direction,
+  ]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const paginatedItems = filteredAndSortedItems.slice(startIndex, endIndex);
 
   function handleSort(key) {
     setSortConfig((prev) => {
@@ -107,16 +205,8 @@ function FullHistoryTable({ items = [] }) {
     });
   }
 
-  function getSortIcon(key) {
-    if (sortConfig.key !== key) {
-      return "↕";
-    }
-
-    return sortConfig.direction === "asc" ? "↑" : "↓";
-  }
-
   function renderCell(item, columnKey, index) {
-    if (columnKey === "index") return index + 1;
+    if (columnKey === "index") return startIndex + index + 1;
     if (columnKey === "date") return formatDisplayDate(item.date);
     if (columnKey === "period") return item.period;
     if (columnKey === "type") return item.type;
@@ -167,38 +257,99 @@ function FullHistoryTable({ items = [] }) {
           message="Change period or type filter to see more data."
         />
       ) : (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                {visibleColumns.map((column) => (
-                  <th key={column.key}>
-                    <button
-                      type="button"
-                      className="table-sort-btn"
-                      onClick={() => handleSort(column.key)}
-                    >
-                      {column.label}
-                      <span>{getSortIcon(column.key)}</span>
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredAndSortedItems.map((item, index) => (
-                <tr key={item.id}>
+        <>
+          <div className="table-wrapper full-history-table-wrapper">
+            <table className="full-history-table">
+              <thead>
+                <tr>
                   {visibleColumns.map((column) => (
-                    <td key={column.key}>
-                      {renderCell(item, column.key, index)}
-                    </td>
+                    <th key={column.key}>
+                      <button
+                        type="button"
+                        className="table-sort-btn"
+                        onClick={() => handleSort(column.key)}
+                      >
+                        <span>{column.label}</span>
+                        <SortIcon
+                          active={sortConfig.key === column.key}
+                          direction={sortConfig.direction}
+                        />
+                      </button>
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+
+              <tbody>
+                {paginatedItems.map((item, index) => (
+                  <tr key={item.id}>
+                    {visibleColumns.map((column) => (
+                      <td key={column.key}>
+                        {renderCell(item, column.key, index)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pagination-bar">
+            <div className="pagination-info">
+              Showing <strong>{startIndex + 1}</strong> to{" "}
+              <strong>{Math.min(endIndex, filteredAndSortedItems.length)}</strong>{" "}
+              of <strong>{filteredAndSortedItems.length}</strong>
+            </div>
+
+            <div className="pagination-controls">
+              <select
+                value={rowsPerPage}
+                onChange={(event) => setRowsPerPage(Number(event.target.value))}
+              >
+                <option value={5}>5 / page</option>
+                <option value={10}>10 / page</option>
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+              </select>
+
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage(1)}
+              >
+                First
+              </button>
+
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((prev) => prev - 1)}
+              >
+                Prev
+              </button>
+
+              <span>
+                Page <strong>{currentPage}</strong> / {totalPages}
+              </span>
+
+              <button
+                type="button"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage((prev) => prev + 1)}
+              >
+                Next
+              </button>
+
+              <button
+                type="button"
+                disabled={currentPage === totalPages}
+                onClick={() => setCurrentPage(totalPages)}
+              >
+                Last
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

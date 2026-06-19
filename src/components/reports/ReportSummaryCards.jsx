@@ -50,7 +50,12 @@ function ReportSummaryCards({
 
       <div className="card report-card">
         <p>Most Used Item</p>
-        <h3>{mostUsedItem?.name || "-"}</h3>
+        <h3>
+          {mostUsedItem?.name
+            ? mostUsedItem.name.charAt(0).toUpperCase() +
+              mostUsedItem.name.slice(1)
+            : "-"}
+        </h3>
         <small>{mostUsedItem?.count || 0} times</small>
       </div>
     </div>

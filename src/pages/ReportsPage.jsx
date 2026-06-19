@@ -8,6 +8,7 @@ import ItemWiseReport from "../components/reports/ItemWiseReport";
 import PaymentWiseReport from "../components/reports/PaymentWiseReport";
 import PeriodWiseReport from "../components/reports/PeriodWiseReport";
 import ReportFilters from "../components/reports/ReportFilters";
+import ReportSidebar from "../components/reports/ReportSidebar";
 import ReportSummaryCards from "../components/reports/ReportSummaryCards";
 import TypeWiseReport from "../components/reports/TypeWiseReport";
 import { getAllBalanceHistory } from "../firebase/balanceService";
@@ -60,6 +61,12 @@ function ReportsPage() {
   const [expenses, setExpenses] = useState([]);
   const [balanceHistory, setBalanceHistory] = useState([]);
   const [filters, setFilters] = useState(defaultFilters);
+  const [activeReport, setActiveReport] = useState("history");
+
+  const [isReportMenuOpen, setIsReportMenuOpen] = useState(true);
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [showMobileCards, setShowMobileCards] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -208,67 +215,125 @@ function ReportsPage() {
     [filteredExpenses]
   );
 
+  function renderActiveReport() {
+    if (activeReport === "type") return <TypeWiseReport data={typeTotals} />;
+    if (activeReport === "payment") return <PaymentWiseReport data={paymentTotals} />;
+    if (activeReport === "period") return <PeriodWiseReport data={periodTotals} />;
+    if (activeReport === "date") return <DateWiseReport data={dateTotals} title="Date-wise Total" />;
+    if (activeReport === "month") return <DateWiseReport data={monthTotals} title="Month-wise Total" />;
+    if (activeReport === "item") return <ItemWiseReport data={itemTotals} />;
+    if (activeReport === "history") return <FullHistoryTable items={filteredExpenses} />;
+    if (activeReport === "balance") return <BalanceHistoryTable items={balanceHistory} />;
+
+    if (activeReport === "export") {
+      return (
+        <ExportButtons
+          expenses={filteredExpenses}
+          balanceHistory={balanceHistory}
+        />
+      );
+    }
+
+    return <FullHistoryTable items={filteredExpenses} />;
+  }
+
   if (loading) {
     return <Loading message="Loading reports..." />;
   }
 
   return (
-    <section>
-      <div className="page-heading">
-        <div>
-          <h2 className="page-title">Reports</h2>
-          <p className="page-subtitle">
-            Simple text and table-based analysis of your expenses.
-          </p>
-        </div>
-      </div>
-
+    <section className="reports-page-shell">
       {error && (
         <div className="error-box">
           <p>{error}</p>
         </div>
       )}
 
-      <div className="reports-actions">
-        <button type="button" className="theme-toggle" onClick={loadReports}>
-          Refresh Reports
-        </button>
+      <div className="reports-three-layout">
+        <div className="reports-left-panel">
+          <ReportSidebar
+            activeReport={activeReport}
+            onChange={setActiveReport}
+            isOpen={isReportMenuOpen}
+            onToggle={() => setIsReportMenuOpen((prev) => !prev)}
+          />
+
+          <div className="reports-mobile-under-menu-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setShowMobileCards((prev) => !prev)}
+            >
+              {showMobileCards ? "Hide Cards" : "Show Cards"}
+            </button>
+
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setIsMobileFilterOpen(true)}
+            >
+              Filters
+            </button>
+          </div>
+        </div>
+
+        <div className="reports-center-panel">
+          <div
+            className={
+              showMobileCards
+                ? "reports-cards-section"
+                : "reports-cards-section reports-cards-section--mobile-hidden"
+            }
+          >
+            <ReportSummaryCards
+              lifetimeTotal={lifetimeTotal}
+              lifetimeCashTotal={lifetimeCashTotal}
+              lifetimeGPayTotal={lifetimeGPayTotal}
+              todayTotal={todayTotal}
+              monthTotal={monthTotal}
+              yearTotal={yearTotal}
+              mostSpentDay={mostSpentDay}
+              mostUsedItem={mostUsedItem}
+            />
+          </div>
+
+          <div className="reports-dynamic-area">{renderActiveReport()}</div>
+        </div>
+
+        <div
+          className={
+            isMobileFilterOpen
+              ? "reports-right-panel reports-right-panel--open"
+              : "reports-right-panel"
+          }
+        >
+          <div className="reports-filter-mobile-header">
+            <h3>Filters</h3>
+
+            <button
+              type="button"
+              className="reports-filter-close"
+              onClick={() => setIsMobileFilterOpen(false)}
+            >
+              ×
+            </button>
+          </div>
+
+          <div className="reports-refresh-box card">
+            <h3>Actions</h3>
+
+            <button type="button" className="theme-toggle" onClick={loadReports}>
+              Refresh Reports
+            </button>
+          </div>
+
+          <ReportFilters
+            filters={filters}
+            onChange={handleFilterChange}
+            onReset={handleResetFilters}
+          />
+        </div>
       </div>
-
-      <ReportFilters
-        filters={filters}
-        onChange={handleFilterChange}
-        onReset={handleResetFilters}
-      />
-
-      <ExportButtons
-        expenses={filteredExpenses}
-        balanceHistory={balanceHistory}
-      />
-
-      <ReportSummaryCards
-        lifetimeTotal={lifetimeTotal}
-        lifetimeCashTotal={lifetimeCashTotal}
-        lifetimeGPayTotal={lifetimeGPayTotal}
-        todayTotal={todayTotal}
-        monthTotal={monthTotal}
-        yearTotal={yearTotal}
-        mostSpentDay={mostSpentDay}
-        mostUsedItem={mostUsedItem}
-      />
-
-      <div className="report-grid">
-        <TypeWiseReport data={typeTotals} />
-        <PaymentWiseReport data={paymentTotals} />
-        <PeriodWiseReport data={periodTotals} />
-        <DateWiseReport data={dateTotals} title="Date-wise Total" />
-        <DateWiseReport data={monthTotals} title="Month-wise Total" />
-        <ItemWiseReport data={itemTotals} />
-      </div>
-
-      <FullHistoryTable items={filteredExpenses} />
-
-      <BalanceHistoryTable items={balanceHistory} />
     </section>
   );
 }

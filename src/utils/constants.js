@@ -19,31 +19,31 @@ export const PAYMENT_TYPES = [
 ];
 
 export const FOOD_SUGGESTIONS = [
-  "idly",
-  "dosa",
-  "poori",
-  "porota",
-  "sapati",
-  "egg",
-  "chicken rice",
-  "egg rice",
-  "chicken briyani",
-  "mini-tiffin",
+  "Idly",
+  "Dosa",
+  "Poori",
+  "Porota",
+  "Sapati",
+  "Egg",
+  "Chicken rice",
+  "Egg rice",
+  "Chicken briyani",
+  "Mini-tiffin",
 ];
 
-export const SNACK_SUGGESTIONS = ["biscuit", "poori"];
+export const SNACK_SUGGESTIONS = ["Biscuit", "Chips"];
 
 export const DEFAULT_EXPENSE_ITEM = {
-  period: "morning",
-  type: "food",
+  period: "Morning",
+  type: "Food",
   name: "",
   description: "",
   price: "",
-  paymentType: "cash",
+  paymentType: "Cash",
 };
 
 export const BALANCE_ACTIONS = {
-  ADD: "add",
-  REDUCE: "reduce",
-  EXPENSE_CASH_DEDUCTION: "expense_cash_deduction",
+  ADD: "Add",
+  REDUCE: "Reduce",
+  EXPENSE_CASH_DEDUCTION: "Expense_cash_deduction",
 };
