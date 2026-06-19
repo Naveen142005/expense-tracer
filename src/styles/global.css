@@ -1391,3 +1391,46 @@ th:nth-child(5) {
     min-width: 0 !important;
   }
 }
+
+/* ============================= */
+/* Add Item Button + Draft Gap Fix */
+/* Add at VERY BOTTOM */
+/* ============================= */
+
+/* Add Expense Item button full width */
+.expense-entry-form .btn {
+  width: 100% !important;
+  margin-top: 12px;
+}
+
+/* Make form button take separate full row */
+.expense-entry-form {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 14px !important;
+}
+
+/* Better gap inside Current Draft Items card */
+.draft-list,
+.empty-state {
+  margin-top: 14px !important;
+}
+
+/* Add spacing between Current Draft title and inside box */
+.card > h3 + .empty-state,
+.card-header + .empty-state,
+.card-header + .draft-list {
+  margin-top: 14px !important;
+}
+
+/* Make empty draft box breathe */
+.empty-state {
+  padding: 30px 18px !important;
+}
+
+/* Mobile also full width */
+@media (max-width: 700px) {
+  .expense-entry-form .btn {
+    width: 100% !important;
+  }
+}
