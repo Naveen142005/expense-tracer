@@ -7,7 +7,7 @@ function Navbar() {
   return (
     <header className="navbar">
       <div className="navbar__brand">
-        <h1>Expense Tracker</h1>
+        <h1>Mass Madasamy </h1>
         <p>Daily spending manager</p>
       </div>
 
