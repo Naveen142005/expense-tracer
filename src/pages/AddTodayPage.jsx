@@ -10,6 +10,7 @@ import ExpenseTypeSelector from "../components/expense/ExpenseTypeSelector";
 import PeriodTabs from "../components/expense/PeriodTabs";
 import TodayOverviewTable from "../components/expense/TodayOverviewTable";
 import TodaySummaryCard from "../components/expense/TodaySummaryCard";
+import { useEditLock } from "../context/EditLockContext";
 import { useBalance } from "../hooks/useBalance";
 import { useDraftExpenses } from "../hooks/useDraftExpenses";
 import { useExpenses } from "../hooks/useExpenses";
@@ -23,6 +24,7 @@ import {
 
 function AddTodayPage() {
   const todayDate = getTodayDate();
+  const { canEdit, isViewMode, openUnlockDialog } = useEditLock();
 
   const [activePeriod, setActivePeriod] = useState("morning");
   const [selectedType, setSelectedType] = useState("food");
@@ -73,10 +75,20 @@ function AddTodayPage() {
   );
 
   function handleAddItem(item) {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     addDraftItem(item);
   }
 
   async function handleAdjustBalance(payload) {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     try {
       setBalanceAdjustLoading(true);
       await updateBalanceManually(payload);
@@ -88,6 +100,11 @@ function AddTodayPage() {
   }
 
   function handleSubmitClick() {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     if (draftItems.length === 0) {
       alert("Add at least one expense item");
       return;
@@ -97,6 +114,12 @@ function AddTodayPage() {
   }
 
   async function handleConfirmSubmit() {
+    if (!canEdit) {
+      setIsConfirmOpen(false);
+      openUnlockDialog();
+      return;
+    }
+
     try {
       setSubmitLoading(true);
 
@@ -120,6 +143,11 @@ function AddTodayPage() {
   }
 
   function handleClearDraft() {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     const confirmClear = window.confirm(
       "Are you sure you want to clear all draft items?"
     );
@@ -142,6 +170,15 @@ function AddTodayPage() {
         </div>
       </div>
 
+      {isViewMode && (
+        <div className="view-mode-notice">
+          <span>View Mode is active. Expense changes are locked.</span>
+          <button type="button" onClick={openUnlockDialog}>
+            Unlock Editing
+          </button>
+        </div>
+      )}
+
       {(balanceError || expensesError) && (
         <div className="error-box">
           {balanceError && <p>{balanceError}</p>}
@@ -155,6 +192,7 @@ function AddTodayPage() {
         <BalanceAdjustForm
           onAdjustBalance={handleAdjustBalance}
           loading={balanceAdjustLoading}
+          disabled={!canEdit}
         />
       </div>
 
@@ -165,6 +203,7 @@ function AddTodayPage() {
             <PeriodTabs
               activePeriod={activePeriod}
               onChange={setActivePeriod}
+              disabled={!canEdit}
             />
           </div>
 
@@ -173,6 +212,7 @@ function AddTodayPage() {
             <ExpenseTypeSelector
               selectedType={selectedType}
               onChange={setSelectedType}
+              disabled={!canEdit}
             />
           </div>
 
@@ -180,12 +220,14 @@ function AddTodayPage() {
             activePeriod={activePeriod}
             selectedType={selectedType}
             onAddItem={handleAddItem}
+            disabled={!canEdit}
           />
 
           <ExpenseDraftList
             draftItems={draftItems}
             onDeleteItem={deleteDraftItem}
             onClearAll={handleClearDraft}
+            disabled={!canEdit}
           />
 
           <div className="submit-area">
@@ -193,7 +235,7 @@ function AddTodayPage() {
               size="lg"
               fullWidth
               onClick={handleSubmitClick}
-              disabled={submitLoading}
+              disabled={submitLoading || !canEdit}
             >
               Submit Today Transaction
             </Button>

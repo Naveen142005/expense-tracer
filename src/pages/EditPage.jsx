@@ -5,6 +5,7 @@ import Loading from "../components/common/Loading";
 import DateSelector from "../components/edit/DateSelector";
 import EditExpenseSection from "../components/edit/EditExpenseSection";
 import EditSummaryCard from "../components/edit/EditSummaryCard";
+import { useEditLock } from "../context/EditLockContext";
 import { useExpenses } from "../hooks/useExpenses";
 import { getTodayDate } from "../utils/dateUtils";
 import {
@@ -28,6 +29,7 @@ function createNewEditItem(period) {
 
 function EditPage() {
   const todayDate = getTodayDate();
+  const { canEdit, isViewMode, openUnlockDialog } = useEditLock();
 
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [loadedDate, setLoadedDate] = useState(todayDate);
@@ -73,10 +75,20 @@ function EditPage() {
   }
 
   function handleAddItem() {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     setEditableItems((prev) => [...prev, createNewEditItem(activePeriod)]);
   }
 
   function handleDeleteItem(itemId) {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     const confirmDelete = window.confirm("Delete this item from selected date?");
 
     if (!confirmDelete) return;
@@ -85,6 +97,11 @@ function EditPage() {
   }
 
   function handleChangeItem(itemId, field, value) {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     setEditableItems((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) {
@@ -145,6 +162,11 @@ function EditPage() {
   }
 
   function handleUpdateClick() {
+    if (!canEdit) {
+      openUnlockDialog();
+      return;
+    }
+
     const validationError = validateItems();
 
     if (validationError) {
@@ -156,6 +178,12 @@ function EditPage() {
   }
 
   async function handleConfirmUpdate() {
+    if (!canEdit) {
+      setIsConfirmOpen(false);
+      openUnlockDialog();
+      return;
+    }
+
     try {
       setUpdateLoading(true);
 
@@ -183,6 +211,15 @@ function EditPage() {
           </p>
         </div>
       </div>
+
+      {isViewMode && (
+        <div className="view-mode-notice">
+          <span>View Mode is active. Saved expenses cannot be changed.</span>
+          <button type="button" onClick={openUnlockDialog}>
+            Unlock Editing
+          </button>
+        </div>
+      )}
 
       <DateSelector
         selectedDate={selectedDate}
@@ -214,6 +251,7 @@ function EditPage() {
                 onChangeItem={handleChangeItem}
                 onDeleteItem={handleDeleteItem}
                 onAddItem={handleAddItem}
+                disabled={!canEdit}
               />
 
               <div className="submit-area">
@@ -222,6 +260,7 @@ function EditPage() {
                   fullWidth
                   onClick={handleUpdateClick}
                   loading={updateLoading}
+                  disabled={!canEdit}
                 >
                   Update Selected Date
                 </Button>

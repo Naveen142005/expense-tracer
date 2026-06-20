@@ -478,3 +478,54 @@
     width: 100%;
   }
 }
+
+/* Large devices: background on complete auth page */
+@media (min-width: 701px) {
+  .auth-page {
+    background-image: url("../assets/WhatsApp\ Image\ 2026-06-20\ at\ 3.01.12\ PM.jpeg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    background-attachment: fixed;
+  }
+
+  .auth-shell {
+    background-image: none;
+    position: absolute;
+    left: 10%;
+  }
+}
+
+/* Mobile devices: background only inside auth shell */
+@media (max-width: 700px) {
+  .auth-page {
+    background-image: none;
+    background-color: var(--bg, #f2f5f9);
+  }
+
+  .auth-shell {
+    position: relative;
+    isolation: isolate;
+    background-image: url("../assets/WhatsApp\ Image\ 2026-06-20\ at\ 3.01.12\ PM.jpeg");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+
+  /* Improves text and form readability */
+  .auth-shell::before {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    /* background: rgba(255, 255, 255, 0.88); */
+    content: "";
+  }
+
+  .auth-brand-panel,
+  .auth-form-panel {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+  }
+}

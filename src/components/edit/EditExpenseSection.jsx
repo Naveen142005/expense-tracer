@@ -8,6 +8,7 @@ function EditExpenseSection({
   onChangeItem,
   onDeleteItem,
   onAddItem,
+  disabled = false,
 }) {
   const filteredItems = items.filter((item) => item.period === activePeriod);
 
@@ -23,6 +24,7 @@ function EditExpenseSection({
         onChangeItem={onChangeItem}
         onDeleteItem={onDeleteItem}
         onAddItem={onAddItem}
+        disabled={disabled}
       />
     </div>
   );

@@ -22,7 +22,12 @@ function getPlaceholderByType(type) {
   return "Example: recharge, medicine, college";
 }
 
-function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
+function ExpenseEntryForm({
+  activePeriod,
+  selectedType,
+  onAddItem,
+  disabled = false,
+}) {
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -101,6 +106,7 @@ function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
               placeholder={inputPlaceholder}
               list="food-suggestions"
               required
+              disabled={disabled}
             />
 
             <datalist id="food-suggestions">
@@ -121,6 +127,7 @@ function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
               placeholder={inputPlaceholder}
               list="snack-suggestions"
               required
+              disabled={disabled}
             />
 
             <datalist id="snack-suggestions">
@@ -138,6 +145,7 @@ function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
             value={form.description}
             onChange={handleChange}
             placeholder={inputPlaceholder}
+            disabled={disabled}
           />
         )}
 
@@ -149,6 +157,7 @@ function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
             onChange={handleChange}
             placeholder={inputPlaceholder}
             required
+            disabled={disabled}
           />
         )}
 
@@ -162,6 +171,7 @@ function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
           min="1"
           step="1"
           required
+          disabled={disabled}
         />
 
         <Select
@@ -170,10 +180,13 @@ function ExpenseEntryForm({ activePeriod, selectedType, onAddItem }) {
           value={form.paymentType}
           onChange={handleChange}
           options={PAYMENT_TYPES}
+          disabled={disabled}
         />
       </div>
 
-      <Button type="submit">Add Item</Button>
+      <Button type="submit" disabled={disabled}>
+        Add Item
+      </Button>
     </form>
   );
 }

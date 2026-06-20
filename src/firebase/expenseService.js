@@ -16,8 +16,13 @@ import {
   calculateTotal,
   toNumber,
 } from "../utils/totalUtils";
+import { assertClientEditAccess } from "../utils/editSession";
 import { db } from "./firebaseConfig";
-import { getUserCollection, getUserDocument } from "./userDataRefs";
+import {
+  getUserCollection,
+  getUserDocument,
+  requireUserId,
+} from "./userDataRefs";
 
 export function subscribeToExpensesByDate(date, callback, errorCallback) {
   const expensesQuery = query(
@@ -71,6 +76,8 @@ export function subscribeToDailyTotal(date, callback, errorCallback) {
 }
 
 export async function submitTodayExpenses({ date, draftItems }) {
+  assertClientEditAccess(requireUserId());
+
   const settingsRef = getUserDocument("settings", "app");
   const dailyTotalRef = getUserDocument("dailyTotals", date);
   const balanceHistoryRef = doc(getUserCollection("balanceHistory"));
@@ -159,6 +166,8 @@ export async function submitTodayExpenses({ date, draftItems }) {
 }
 
 export async function updateExpensesForDate({ date, items }) {
+  assertClientEditAccess(requireUserId());
+
   const expensesQuery = query(
     getUserCollection("expenses"),
     where("date", "==", date)

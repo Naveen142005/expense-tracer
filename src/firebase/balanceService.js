@@ -8,8 +8,13 @@ import {
 import { BALANCE_ACTIONS } from "../utils/constants";
 import { getTodayDate } from "../utils/dateUtils";
 import { toNumber } from "../utils/totalUtils";
+import { assertClientEditAccess } from "../utils/editSession";
 import { db } from "./firebaseConfig";
-import { getUserCollection, getUserDocument } from "./userDataRefs";
+import {
+  getUserCollection,
+  getUserDocument,
+  requireUserId,
+} from "./userDataRefs";
 
 const SETTINGS_DOC_ID = "app";
 
@@ -31,6 +36,8 @@ export function subscribeToBalance(callback, errorCallback) {
 }
 
 export async function adjustBalance({ action, amount, reason }) {
+  assertClientEditAccess(requireUserId());
+
   const settingsRef = getUserDocument("settings", SETTINGS_DOC_ID);
   const historyRef = doc(getUserCollection("balanceHistory"));
 

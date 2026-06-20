@@ -1,6 +1,6 @@
 import { EXPENSE_TYPES } from "../../utils/constants";
 
-function ExpenseTypeSelector({ selectedType, onChange }) {
+function ExpenseTypeSelector({ selectedType, onChange, disabled = false }) {
   return (
     <div className="type-selector">
       {EXPENSE_TYPES.map((type) => (
@@ -13,6 +13,7 @@ function ExpenseTypeSelector({ selectedType, onChange }) {
               : "type-btn"
           }
           onClick={() => onChange(type.value)}
+          disabled={disabled}
         >
           {type.label}
         </button>

@@ -3,7 +3,7 @@ import Button from "../common/Button";
 import Input from "../common/Input";
 import Select from "../common/Select";
 
-function BalanceAdjustForm({ onAdjustBalance, loading = false }) {
+function BalanceAdjustForm({ onAdjustBalance, loading = false, disabled = false }) {
   const [form, setForm] = useState({
     action: "add",
     amount: "",
@@ -56,7 +56,7 @@ function BalanceAdjustForm({ onAdjustBalance, loading = false }) {
             { label: "Add Balance", value: "add" },
             { label: "Reduce Balance", value: "reduce" },
           ]}
-          disabled={loading}
+          disabled={loading || disabled}
         />
 
         <Input
@@ -69,7 +69,7 @@ function BalanceAdjustForm({ onAdjustBalance, loading = false }) {
           min="1"
           step="1"
           required
-          disabled={loading}
+          disabled={loading || disabled}
         />
 
         <Input
@@ -78,11 +78,16 @@ function BalanceAdjustForm({ onAdjustBalance, loading = false }) {
           value={form.reason}
           onChange={handleChange}
           placeholder="Example: Added cash, correction"
-          disabled={loading}
+          disabled={loading || disabled}
         />
       </div>
 
-      <Button type="submit" variant="secondary" loading={loading}>
+      <Button
+        type="submit"
+        variant="secondary"
+        loading={loading}
+        disabled={disabled}
+      >
         Apply
       </Button>
     </form>

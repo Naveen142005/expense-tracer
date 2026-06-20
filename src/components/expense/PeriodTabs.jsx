@@ -1,6 +1,6 @@
 import { PERIODS } from "../../utils/constants";
 
-function PeriodTabs({ activePeriod, onChange }) {
+function PeriodTabs({ activePeriod, onChange, disabled = false }) {
   return (
     <div className="period-tabs">
       {PERIODS.map((period) => (
@@ -13,6 +13,7 @@ function PeriodTabs({ activePeriod, onChange }) {
               : "period-tab"
           }
           onClick={() => onChange(period.value)}
+          disabled={disabled}
         >
           {period.label}
         </button>

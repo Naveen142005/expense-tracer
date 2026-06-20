@@ -13,13 +13,14 @@ function EditableExpenseTable({
   onChangeItem,
   onDeleteItem,
   onAddItem,
+  disabled = false,
 }) {
   return (
     <div className="card table-card">
       <div className="card-header">
         <h3>Editable Expenses</h3>
 
-        <Button size="sm" onClick={onAddItem}>
+        <Button size="sm" onClick={onAddItem} disabled={disabled}>
           Add New Item
         </Button>
       </div>
@@ -74,6 +75,7 @@ function EditableExpenseTable({
                     <td>
                       <select
                         value={item.period}
+                        disabled={disabled}
                         onChange={(event) =>
                           onChangeItem(item.id, "period", event.target.value)
                         }
@@ -89,6 +91,7 @@ function EditableExpenseTable({
                     <td>
                       <select
                         value={item.type}
+                        disabled={disabled}
                         onChange={(event) =>
                           onChangeItem(item.id, "type", event.target.value)
                         }
@@ -111,6 +114,7 @@ function EditableExpenseTable({
                             ? "Optional description"
                             : "Required"
                         }
+                        disabled={disabled}
                         onChange={(event) =>
                           onChangeItem(item.id, textField, event.target.value)
                         }
@@ -120,6 +124,7 @@ function EditableExpenseTable({
                     <td>
                       <select
                         value={item.paymentType}
+                        disabled={disabled}
                         onChange={(event) =>
                           onChangeItem(
                             item.id,
@@ -142,6 +147,7 @@ function EditableExpenseTable({
                         min="1"
                         step="1"
                         value={item.price}
+                        disabled={disabled}
                         onChange={(event) =>
                           onChangeItem(item.id, "price", event.target.value)
                         }
@@ -153,6 +159,7 @@ function EditableExpenseTable({
                         variant="danger"
                         size="sm"
                         onClick={() => onDeleteItem(item.id)}
+                        disabled={disabled}
                       >
                         Delete
                       </Button>

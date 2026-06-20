@@ -2,14 +2,24 @@ import Button from "../common/Button";
 import EmptyState from "../common/EmptyState";
 import { formatCurrency } from "../../utils/totalUtils";
 
-function ExpenseDraftList({ draftItems = [], onDeleteItem, onClearAll }) {
+function ExpenseDraftList({
+  draftItems = [],
+  onDeleteItem,
+  onClearAll,
+  disabled = false,
+}) {
   return (
     <div className="card">
       <div className="card-header">
         <h3>Current Draft Items</h3>
 
         {draftItems.length > 0 && (
-          <Button variant="secondary" size="sm" onClick={onClearAll}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onClearAll}
+            disabled={disabled}
+          >
             Clear All
           </Button>
         )}
@@ -37,6 +47,7 @@ function ExpenseDraftList({ draftItems = [], onDeleteItem, onClearAll }) {
                   variant="danger"
                   size="sm"
                   onClick={() => onDeleteItem(item.id)}
+                  disabled={disabled}
                 >
                   Delete
                 </Button>
