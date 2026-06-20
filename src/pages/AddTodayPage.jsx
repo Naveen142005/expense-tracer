@@ -26,8 +26,8 @@ function AddTodayPage() {
   const todayDate = getTodayDate();
   const { canEdit, isViewMode, openUnlockDialog } = useEditLock();
 
-  const [activePeriod, setActivePeriod] = useState("morning");
-  const [selectedType, setSelectedType] = useState("food");
+  const [activePeriod, setActivePeriod] = useState("");
+  const [selectedType, setSelectedType] = useState("");
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [balanceAdjustLoading, setBalanceAdjustLoading] = useState(false);
@@ -216,12 +216,14 @@ function AddTodayPage() {
             />
           </div>
 
-          <ExpenseEntryForm
-            activePeriod={activePeriod}
-            selectedType={selectedType}
-            onAddItem={handleAddItem}
-            disabled={!canEdit}
-          />
+          {activePeriod && selectedType && (
+  <ExpenseEntryForm
+    activePeriod={activePeriod}
+    selectedType={selectedType}
+    onAddItem={handleAddItem}
+    disabled={!canEdit}
+  />
+)}
 
           <ExpenseDraftList
             draftItems={draftItems}

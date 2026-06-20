@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function EditAccessDialog({
   open,
@@ -10,38 +10,53 @@ function EditAccessDialog({
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const checkingPin = useRef(false);
 
   useEffect(() => {
     if (open) {
       setPin("");
       setError("");
       setLoading(false);
+      checkingPin.current = false;
     }
   }, [open]);
 
-  if (!open) return null;
-
-  function handlePinChange(event) {
-    setPin(event.target.value.replace(/\D/g, "").slice(0, 6));
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setError("");
-
-    if (pin.length !== 6) {
-      setError("Enter your 6-digit edit PIN.");
+  async function checkPinAutomatically(pinValue) {
+    if (checkingPin.current || pinValue.length !== 6) {
       return;
     }
 
     try {
+      checkingPin.current = true;
       setLoading(true);
-      await onUnlock(pin);
+      setError("");
+
+      await onUnlock(pinValue);
     } catch (unlockError) {
-      setError(unlockError.message || "Unable to unlock editing.");
+      setError(unlockError.message || "Incorrect edit PIN.");
+      setPin("");
     } finally {
+      checkingPin.current = false;
       setLoading(false);
     }
+  }
+
+  function handlePinChange(event) {
+    const nextPin = event.target.value
+      .replace(/\D/g, "")
+      .slice(0, 6);
+
+    setPin(nextPin);
+    setError("");
+
+    if (nextPin.length === 6) {
+      checkPinAutomatically(nextPin);
+    }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    checkPinAutomatically(pin);
   }
 
   function handleClose() {
@@ -53,6 +68,8 @@ function EditAccessDialog({
     onClose();
   }
 
+  if (!open) return null;
+
   return (
     <div className="edit-lock-backdrop" role="presentation">
       <section
@@ -63,7 +80,10 @@ function EditAccessDialog({
       >
         <div className="edit-lock-dialog__header">
           <div>
-            <span className="edit-lock-dialog__eyebrow">Protected editing</span>
+            <span className="edit-lock-dialog__eyebrow">
+              Protected editing
+            </span>
+
             <h2 id="edit-access-title">Edit Access</h2>
           </div>
 
@@ -72,6 +92,7 @@ function EditAccessDialog({
               type="button"
               className="edit-lock-dialog__close"
               onClick={onClose}
+              disabled={loading}
             >
               Close
             </button>
@@ -79,31 +100,32 @@ function EditAccessDialog({
         </div>
 
         <p className="edit-lock-dialog__description">
-          Enter the edit PIN to add or change expenses. You can continue without
-          it in View Mode.
+          Enter the edit PIN to add or change expenses. You can continue
+          without it in View Mode.
         </p>
 
         <form className="edit-lock-form" onSubmit={handleSubmit}>
-          {error && <div className="edit-lock-message edit-lock-message--error">{error}</div>}
+          {error && (
+            <div className="edit-lock-message edit-lock-message--error">
+              {error}
+            </div>
+          )}
 
           <label className="edit-lock-field">
             <span>6-digit PIN</span>
+
             <input
               type="password"
               inputMode="numeric"
               autoComplete="off"
               value={pin}
               onChange={handlePinChange}
-              placeholder="Enter PIN"
+              placeholder={loading ? "Checking PIN..." : "Enter PIN"}
               maxLength="6"
               autoFocus
               disabled={loading}
             />
           </label>
-
-          <button className="edit-lock-primary" type="submit" disabled={loading}>
-            {loading ? "Checking PIN..." : "Unlock Editing"}
-          </button>
 
           <button
             className="edit-lock-secondary"

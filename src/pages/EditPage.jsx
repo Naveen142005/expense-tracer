@@ -33,7 +33,7 @@ function EditPage() {
 
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [loadedDate, setLoadedDate] = useState(todayDate);
-  const [activePeriod, setActivePeriod] = useState("morning");
+  const [activePeriod, setActivePeriod] = useState("");
   const [editableItems, setEditableItems] = useState([]);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
