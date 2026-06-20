@@ -289,3 +289,71 @@
     width: 100%;
   }
 }
+
+/* Desktop: security controls below Logout */
+@media (min-width: 701px) {
+  .navbar__links {
+    display: grid;
+    grid-template-columns: repeat(5, max-content);
+    justify-content: end;
+    align-items: center;
+  }
+  .navbar__links > a:nth-of-type(1) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .navbar__links > a:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .navbar__links > a:nth-of-type(3) {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .navbar__links .theme-toggle {
+    grid-column: 4;
+    grid-row: 1;
+  }
+  .navbar__links .navbar__logout {
+    grid-column: 5;
+    grid-row: 1;
+  }
+  .navbar__links .edit-mode-badge {
+    grid-column: 3;
+    grid-row: 2;
+  }
+  .navbar__links .edit-lock-navbar-btn--lock,
+  .navbar__links .edit-lock-navbar-btn--unlock {
+    grid-column: 4;
+    grid-row: 2;
+  }
+  .navbar__links .edit-lock-navbar-btn--settings {
+    grid-column: 5;
+    grid-row: 2;
+  }
+} /* Mobile: security controls after Logout */
+@media (max-width: 700px) {
+  .navbar__links .theme-toggle {
+    order: 4;
+  }
+  .navbar__links .navbar__logout {
+    grid-column: 1 / -1;
+    order: 5;
+  }
+  .navbar__links .edit-mode-badge {
+    order: 6;
+  }
+  .navbar__links .edit-lock-navbar-btn--lock,
+  .navbar__links .edit-lock-navbar-btn--unlock {
+    order: 7;
+  }
+  .navbar__links .edit-lock-navbar-btn--settings {
+    grid-column: 1 / -1;
+    order: 8;
+  }
+}
+
+/* .edit-mode-badge,
+.edit-lock-navbar-btn {
+  display: none !important;
+} */

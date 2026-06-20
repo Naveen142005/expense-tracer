@@ -37,7 +37,12 @@ function Navbar() {
         <p>{user?.displayName || user?.email || "Daily spending manager"}</p>
       </div>
 
-      <nav className="navbar__links" aria-label="Main navigation">
+      <nav
+        className={`navbar__links ${
+          pinConfigured ? "navbar__links--pin-set" : ""
+        }`}
+        aria-label="Main navigation"
+      >
         <NavLink to="/" end>
           Add Today
         </NavLink>

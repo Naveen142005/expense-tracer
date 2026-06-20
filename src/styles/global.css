@@ -4104,3 +4104,8 @@ body,
     min-width: 0 !important;
   }
 }
+
+.navbar__links--pin-set .edit-mode-badge,
+.navbar__links--pin-set .edit-lock-navbar-btn {
+  display: none !important;
+}
