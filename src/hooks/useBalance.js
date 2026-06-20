@@ -1,8 +1,14 @@
 import { useEffect, useState } from "react";
 import { adjustBalance, subscribeToBalance } from "../firebase/balanceService";
 
+const initialBalance = {
+  totalBalance: 0,
+  cashBalance: 0,
+  gpayBalance: 0,
+};
+
 export function useBalance() {
-  const [balance, setBalance] = useState(0);
+  const [balance, setBalance] = useState(initialBalance);
   const [balanceLoading, setBalanceLoading] = useState(true);
   const [balanceError, setBalanceError] = useState("");
 
@@ -26,7 +32,7 @@ export function useBalance() {
     setBalanceError("");
 
     try {
-      await adjustBalance(payload);
+      return await adjustBalance(payload);
     } catch (error) {
       console.error(error);
       setBalanceError("Failed to update balance");

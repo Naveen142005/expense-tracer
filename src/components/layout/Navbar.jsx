@@ -2,10 +2,12 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useEditLock } from "../../context/EditLockContext";
+import { useFeedback } from "../../context/FeedbackContext";
 import { useTheme } from "../../hooks/useTheme";
 
 function Navbar() {
   const { theme, toggleTheme } = useTheme();
+  const { notify } = useFeedback();
   const { user, logout } = useAuth();
   const {
     pinConfigured,
@@ -25,7 +27,11 @@ function Navbar() {
       await logout();
     } catch (error) {
       console.error(error);
-      alert("Failed to log out. Please try again.");
+      notify({
+        type: "error",
+        title: "Logout failed",
+        message: "Please try again.",
+      });
       setLogoutLoading(false);
     }
   }

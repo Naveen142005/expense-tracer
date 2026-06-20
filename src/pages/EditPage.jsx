@@ -6,12 +6,14 @@ import DateSelector from "../components/edit/DateSelector";
 import EditExpenseSection from "../components/edit/EditExpenseSection";
 import EditSummaryCard from "../components/edit/EditSummaryCard";
 import { useEditLock } from "../context/EditLockContext";
+import { useFeedback } from "../context/FeedbackContext";
 import { useExpenses } from "../hooks/useExpenses";
 import { getTodayDate } from "../utils/dateUtils";
 import {
   calculateCashTotal,
   calculateGPayTotal,
   calculateTotal,
+  formatCurrency,
 } from "../utils/totalUtils";
 
 function createNewEditItem(period) {
@@ -30,6 +32,7 @@ function createNewEditItem(period) {
 function EditPage() {
   const todayDate = getTodayDate();
   const { canEdit, isViewMode, openUnlockDialog } = useEditLock();
+  const { notify, confirmAction } = useFeedback();
 
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [loadedDate, setLoadedDate] = useState(todayDate);
@@ -66,7 +69,11 @@ function EditPage() {
 
   function handleShowData() {
     if (!selectedDate) {
-      alert("Select date");
+      notify({
+        type: "warning",
+        title: "Date required",
+        message: "Select a date before loading expenses.",
+      });
       return;
     }
 
@@ -83,13 +90,20 @@ function EditPage() {
     setEditableItems((prev) => [...prev, createNewEditItem(activePeriod)]);
   }
 
-  function handleDeleteItem(itemId) {
+  async function handleDeleteItem(itemId) {
     if (!canEdit) {
       openUnlockDialog();
       return;
     }
 
-    const confirmDelete = window.confirm("Delete this item from selected date?");
+    const confirmDelete = await confirmAction({
+      title: "Delete this expense?",
+      message:
+        "The matching Cash or GPay balance will be reconciled when you update this date.",
+      confirmText: "Delete Item",
+      cancelText: "Keep Item",
+      tone: "danger",
+    });
 
     if (!confirmDelete) return;
 
@@ -170,7 +184,11 @@ function EditPage() {
     const validationError = validateItems();
 
     if (validationError) {
-      alert(validationError);
+      notify({
+        type: "warning",
+        title: "Check expense details",
+        message: validationError,
+      });
       return;
     }
 
@@ -187,15 +205,63 @@ function EditPage() {
     try {
       setUpdateLoading(true);
 
-      await updateDateExpenses(editableItems);
+      const result = await updateDateExpenses(editableItems);
 
       setIsConfirmOpen(false);
 
-      alert(
-        "Updated successfully.\n\nCurrent Balance was not changed. Adjust balance manually if needed."
-      );
-    } catch {
-      alert("Failed to update expenses");
+      const balanceChanges = [];
+
+      if (result.cashBalanceChange < 0) {
+        balanceChanges.push(
+          `Cash reduced: ${formatCurrency(Math.abs(result.cashBalanceChange))}`
+        );
+      } else if (result.cashBalanceChange > 0) {
+        balanceChanges.push(
+          `Cash refunded: ${formatCurrency(result.cashBalanceChange)}`
+        );
+      }
+
+      if (result.gpayBalanceChange < 0) {
+        balanceChanges.push(
+          `GPay reduced: ${formatCurrency(Math.abs(result.gpayBalanceChange))}`
+        );
+      } else if (result.gpayBalanceChange > 0) {
+        balanceChanges.push(
+          `GPay refunded: ${formatCurrency(result.gpayBalanceChange)}`
+        );
+      }
+
+      if (result.gpayShortfallResolved > 0) {
+        balanceChanges.push(
+          `GPay shortfall resolved: ${formatCurrency(
+            result.gpayShortfallResolved
+          )}`
+        );
+      }
+
+      if (result.gpayShortfallAdded > 0) {
+        balanceChanges.push(
+          `New GPay shortfall: ${formatCurrency(result.gpayShortfallAdded)}`
+        );
+      }
+
+      notify({
+        type: result.gpayShortfallAdded > 0 ? "warning" : "success",
+        title:
+          result.gpayShortfallAdded > 0
+            ? "Expenses updated with GPay shortfall"
+            : "Expenses and balances updated",
+        message:
+          balanceChanges.length > 0
+            ? balanceChanges.join("\n")
+            : "Expense details were updated. Wallet balances were unchanged.",
+      });
+    } catch (error) {
+      notify({
+        type: "error",
+        title: "Update failed",
+        message: error.message || "Unable to update the selected date.",
+      });
     } finally {
       setUpdateLoading(false);
     }
@@ -207,7 +273,7 @@ function EditPage() {
         <div>
           <h2 className="page-title">Edit Expense</h2>
           <p className="page-subtitle">
-            Editing saved expenses will not change Current Balance.
+            Cash and GPay balances automatically reconcile with your changes.
           </p>
         </div>
       </div>
@@ -282,7 +348,7 @@ function EditPage() {
       <ConfirmModal
         isOpen={isConfirmOpen}
         title="Update Expenses"
-        message="Are you sure you want to update this date? Current Balance will not change."
+        message="Update this date and reconcile the matching Cash and GPay balances?"
         confirmText="Yes, Update"
         cancelText="No"
         loading={updateLoading}

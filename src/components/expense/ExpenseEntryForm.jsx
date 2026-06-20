@@ -4,6 +4,7 @@ import {
   PAYMENT_TYPES,
   SNACK_SUGGESTIONS,
 } from "../../utils/constants";
+import { useFeedback } from "../../context/FeedbackContext";
 import Button from "../common/Button";
 import Input from "../common/Input";
 import Select from "../common/Select";
@@ -28,6 +29,7 @@ function ExpenseEntryForm({
   onAddItem,
   disabled = false,
 }) {
+  const { notify } = useFeedback();
   const [form, setForm] = useState({
     name: "",
     description: "",
@@ -60,12 +62,20 @@ function ExpenseEntryForm({
     const textValue = form.name.trim();
 
     if (selectedType !== "bus" && !textValue) {
-      alert("Name / description is required");
+      notify({
+        type: "warning",
+        title: "Item name required",
+        message: "Enter a name or description for this expense.",
+      });
       return;
     }
 
     if (!price || price <= 0) {
-      alert("Enter valid price");
+      notify({
+        type: "warning",
+        title: "Invalid price",
+        message: "Enter a price greater than zero.",
+      });
       return;
     }
 

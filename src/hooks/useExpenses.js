@@ -13,6 +13,9 @@ export function useExpenses(date) {
     total: 0,
     cashTotal: 0,
     gpayTotal: 0,
+    cashBalanceImpact: 0,
+    gpayBalanceImpact: 0,
+    gpayBalanceShortfall: 0,
   });
 
   const [expensesLoading, setExpensesLoading] = useState(true);

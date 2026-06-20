@@ -1,0 +1,147 @@
+/* Override the older global two-column balance layout. */
+.balance-grid.balance-grid--wallets {
+  display: block !important;
+  grid-template-columns: none !important;
+  gap: 0 !important;
+  align-items: initial !important;
+  width: 100% !important;
+  margin-bottom: 18px !important;
+}
+
+.wallet-balance-grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 16px !important;
+  width: 100% !important;
+}
+
+.wallet-balance-grid .balance-card {
+  position: relative;
+  min-width: 0;
+  min-height: 148px;
+  padding: 20px !important;
+  overflow: hidden;
+  border-top: 4px solid transparent;
+}
+
+.wallet-balance-grid .balance-card--total {
+  border-top-color: #2563eb;
+}
+
+.wallet-balance-grid .balance-card--cash {
+  border-top-color: #10b981;
+}
+
+.wallet-balance-grid .balance-card--gpay {
+  border-top-color: #7c3aed;
+}
+
+.wallet-balance-grid .card-label {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.wallet-balance-grid .balance-card h2 {
+  margin: 10px 0 8px;
+  font-size: 32px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.wallet-balance-grid .balance-card .muted-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.balance-grid--wallets .balance-adjust-form {
+  width: 100% !important;
+  margin-top: 16px !important;
+}
+
+.balance-grid--wallets .balance-adjust-form .form-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 14px !important;
+  align-items: end !important;
+}
+
+.expense-selection-guide {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 15px 16px;
+  border: 1px solid #60a5fa;
+  border-left: 4px solid #2563eb;
+  border-radius: 7px;
+  background: rgba(37, 99, 235, 0.11);
+  color: var(--text, #172033);
+}
+
+.expense-selection-guide__icon {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  place-items: center;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.expense-selection-guide strong {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 14px;
+}
+
+.expense-selection-guide p {
+  margin: 0;
+  color: var(--muted-text, #667085);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Small laptops and tablets */
+@media (max-width: 1050px) {
+  .wallet-balance-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .wallet-balance-grid .balance-card--total {
+    grid-column: 1 / -1;
+  }
+
+  .balance-grid--wallets .balance-adjust-form .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  .wallet-balance-grid,
+  .balance-grid--wallets .balance-adjust-form .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .wallet-balance-grid .balance-card--total {
+    grid-column: auto;
+  }
+
+  .wallet-balance-grid .balance-card {
+    min-height: auto;
+    padding: 17px !important;
+  }
+
+  .wallet-balance-grid .balance-card h2 {
+    font-size: 28px;
+  }
+
+  .expense-selection-guide {
+    align-items: flex-start;
+  }
+}

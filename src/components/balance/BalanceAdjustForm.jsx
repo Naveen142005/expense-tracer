@@ -1,20 +1,30 @@
 import { useState } from "react";
+import { BALANCE_TYPES } from "../../utils/constants";
+import { useFeedback } from "../../context/FeedbackContext";
 import Button from "../common/Button";
 import Input from "../common/Input";
 import Select from "../common/Select";
 
-function BalanceAdjustForm({ onAdjustBalance, loading = false, disabled = false }) {
-  const [form, setForm] = useState({
-    action: "add",
-    amount: "",
-    reason: "",
-  });
+const initialForm = {
+  balanceType: "",
+  action: "add",
+  amount: "",
+  reason: "",
+};
+
+function BalanceAdjustForm({
+  onAdjustBalance,
+  loading = false,
+  disabled = false,
+}) {
+  const { notify } = useFeedback();
+  const [form, setForm] = useState(initialForm);
 
   function handleChange(event) {
     const { name, value } = event.target;
 
-    setForm((prev) => ({
-      ...prev,
+    setForm((previous) => ({
+      ...previous,
       [name]: value,
     }));
   }
@@ -22,24 +32,36 @@ function BalanceAdjustForm({ onAdjustBalance, loading = false, disabled = false 
   async function handleSubmit(event) {
     event.preventDefault();
 
-    const amount = Number(form.amount);
-
-    if (!amount || amount <= 0) {
-      alert("Enter valid amount");
+    if (!form.balanceType) {
+      notify({
+        type: "warning",
+        title: "Balance type required",
+        message: "Select Cash Balance or GPay Balance.",
+      });
       return;
     }
 
-    await onAdjustBalance({
+    const amount = Number(form.amount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      notify({
+        type: "warning",
+        title: "Invalid amount",
+        message: "Enter an amount greater than zero.",
+      });
+      return;
+    }
+
+    const updated = await onAdjustBalance({
+      balanceType: form.balanceType,
       action: form.action,
       amount,
       reason: form.reason.trim() || "Manual balance adjustment",
     });
 
-    setForm({
-      action: "add",
-      amount: "",
-      reason: "",
-    });
+    if (!updated) return;
+
+    setForm(initialForm);
   }
 
   return (
@@ -47,6 +69,19 @@ function BalanceAdjustForm({ onAdjustBalance, loading = false, disabled = false 
       <h3>Adjust Balance</h3>
 
       <div className="form-grid">
+        <Select
+          label="Balance Type"
+          name="balanceType"
+          value={form.balanceType}
+          onChange={handleChange}
+          options={[
+            { label: "Select balance", value: "" },
+            ...BALANCE_TYPES,
+          ]}
+          required
+          disabled={loading || disabled}
+        />
+
         <Select
           label="Action"
           name="action"
@@ -77,7 +112,7 @@ function BalanceAdjustForm({ onAdjustBalance, loading = false, disabled = false 
           name="reason"
           value={form.reason}
           onChange={handleChange}
-          placeholder="Example: Added cash, correction"
+          placeholder="Example: Added funds, correction"
           disabled={loading || disabled}
         />
       </div>

@@ -11,6 +11,7 @@ import PeriodTabs from "../components/expense/PeriodTabs";
 import TodayOverviewTable from "../components/expense/TodayOverviewTable";
 import TodaySummaryCard from "../components/expense/TodaySummaryCard";
 import { useEditLock } from "../context/EditLockContext";
+import { useFeedback } from "../context/FeedbackContext";
 import { useBalance } from "../hooks/useBalance";
 import { useDraftExpenses } from "../hooks/useDraftExpenses";
 import { useExpenses } from "../hooks/useExpenses";
@@ -25,6 +26,7 @@ import {
 function AddTodayPage() {
   const todayDate = getTodayDate();
   const { canEdit, isViewMode, openUnlockDialog } = useEditLock();
+  const { notify, confirmAction } = useFeedback();
 
   const [activePeriod, setActivePeriod] = useState("");
   const [selectedType, setSelectedType] = useState("");
@@ -74,6 +76,22 @@ function AddTodayPage() {
     [savedTodayItems, draftItems]
   );
 
+  const selectionGuidance = useMemo(() => {
+    if (!activePeriod && !selectedType) {
+      return "Please select a period and expense type to add an item.";
+    }
+
+    if (!activePeriod) {
+      return "Expense type selected. Now select a period to continue.";
+    }
+
+    if (!selectedType) {
+      return "Period selected. Now select an expense type to continue.";
+    }
+
+    return "";
+  }, [activePeriod, selectedType]);
+
   function handleAddItem(item) {
     if (!canEdit) {
       openUnlockDialog();
@@ -91,9 +109,33 @@ function AddTodayPage() {
 
     try {
       setBalanceAdjustLoading(true);
-      await updateBalanceManually(payload);
-    } catch {
-      alert("Failed to update balance");
+      const result = await updateBalanceManually(payload);
+
+      if (result?.shortfall > 0) {
+        notify({
+          type: "warning",
+          title: "GPay balance reached zero",
+          message: `Only ${formatCurrency(
+            result.appliedAmount
+          )} was applied. Shortfall: ${formatCurrency(result.shortfall)}.`,
+        });
+      } else {
+        notify({
+          type: "success",
+          title: "Balance updated",
+          message: `${result.balanceType === "gpay" ? "GPay" : "Cash"} Balance is now ${formatCurrency(
+            result.newBalance
+          )}.`,
+        });
+      }
+      return true;
+    } catch (error) {
+      notify({
+        type: "error",
+        title: "Balance update failed",
+        message: error.message || "Please try again.",
+      });
+      return false;
     } finally {
       setBalanceAdjustLoading(false);
     }
@@ -106,7 +148,11 @@ function AddTodayPage() {
     }
 
     if (draftItems.length === 0) {
-      alert("Add at least one expense item");
+      notify({
+        type: "warning",
+        title: "No expense items",
+        message: "Add at least one expense item before submitting.",
+      });
       return;
     }
 
@@ -128,32 +174,61 @@ function AddTodayPage() {
       clearDraftItems();
       setIsConfirmOpen(false);
 
-      alert(
-        `Saved successfully.\n\nToday transaction: ${formatCurrency(
-          result.total
-        )}\nCash reduced: ${formatCurrency(
-          result.cashTotal
-        )}\nGPay included in report: ${formatCurrency(result.gpayTotal)}`
-      );
-    } catch {
-      alert("Failed to save expenses");
+      if (result.gpayShortfall > 0) {
+        notify({
+          type: "warning",
+          title: "Expenses saved with GPay shortfall",
+          message: `Transaction: ${formatCurrency(
+            result.total
+          )}\nCash reduced: ${formatCurrency(
+            result.cashTotal
+          )}\nGPay applied: ${formatCurrency(
+            result.gpayDeductedAmount
+          )}\nGPay shortfall: ${formatCurrency(result.gpayShortfall)}`,
+        });
+      } else {
+        notify({
+          type: "success",
+          title: "Expenses saved",
+          message: `Transaction: ${formatCurrency(
+            result.total
+          )}\nCash reduced: ${formatCurrency(
+            result.cashTotal
+          )}\nGPay reduced: ${formatCurrency(result.gpayTotal)}`,
+        });
+      }
+    } catch (error) {
+      notify({
+        type: "error",
+        title: "Unable to save expenses",
+        message: error.message || "Please try again.",
+      });
     } finally {
       setSubmitLoading(false);
     }
   }
 
-  function handleClearDraft() {
+  async function handleClearDraft() {
     if (!canEdit) {
       openUnlockDialog();
       return;
     }
 
-    const confirmClear = window.confirm(
-      "Are you sure you want to clear all draft items?"
-    );
+    const confirmClear = await confirmAction({
+      title: "Clear all draft items?",
+      message: "This removes every unsaved item from the current draft.",
+      confirmText: "Clear Draft",
+      cancelText: "Keep Items",
+      tone: "danger",
+    });
 
     if (confirmClear) {
       clearDraftItems();
+      notify({
+        type: "info",
+        title: "Draft cleared",
+        message: "All unsaved expense items were removed.",
+      });
     }
   }
 
@@ -186,7 +261,7 @@ function AddTodayPage() {
         </div>
       )}
 
-      <div className="balance-grid">
+      <div className="balance-grid balance-grid--wallets">
         <BalanceCard balance={balance} />
 
         <BalanceAdjustForm
@@ -216,14 +291,26 @@ function AddTodayPage() {
             />
           </div>
 
+          {canEdit && selectionGuidance && (
+            <div className="expense-selection-guide" role="status">
+              <span className="expense-selection-guide__icon" aria-hidden="true">
+                i
+              </span>
+              <div>
+                <strong>Please Select Your Selection</strong>
+                <p>{selectionGuidance}</p>
+              </div>
+            </div>
+          )}
+
           {activePeriod && selectedType && (
-  <ExpenseEntryForm
-    activePeriod={activePeriod}
-    selectedType={selectedType}
-    onAddItem={handleAddItem}
-    disabled={!canEdit}
-  />
-)}
+            <ExpenseEntryForm
+              activePeriod={activePeriod}
+              selectedType={selectedType}
+              onAddItem={handleAddItem}
+              disabled={!canEdit}
+            />
+          )}
 
           <ExpenseDraftList
             draftItems={draftItems}

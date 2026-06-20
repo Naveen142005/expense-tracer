@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFeedback } from "../../context/FeedbackContext";
 
 const emptyForm = {
   currentPin: "",
@@ -14,6 +15,7 @@ function EditPinSettingsDialog({
   onRemovePin,
   onClose,
 }) {
+  const { notify, confirmAction } = useFeedback();
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
   const [loadingAction, setLoadingAction] = useState("");
@@ -72,6 +74,13 @@ function EditPinSettingsDialog({
         await onSetPin(form.newPin);
       }
 
+      notify({
+        type: "success",
+        title: pinConfigured ? "Edit PIN changed" : "Edit PIN enabled",
+        message: pinConfigured
+          ? "Use the new PIN the next time editing is locked."
+          : "Editing will require this PIN in future sessions.",
+      });
       onClose();
     } catch (saveError) {
       setError(saveError.message || "Unable to save the edit PIN.");
@@ -88,15 +97,24 @@ function EditPinSettingsDialog({
       return;
     }
 
-    const confirmed = window.confirm(
-      "Remove the edit PIN? Everyone using this login will be able to edit."
-    );
+    const confirmed = await confirmAction({
+      title: "Remove edit PIN?",
+      message: "Everyone using this login will be able to edit.",
+      confirmText: "Remove PIN",
+      cancelText: "Keep PIN",
+      tone: "danger",
+    });
 
     if (!confirmed) return;
 
     try {
       setLoadingAction("remove");
       await onRemovePin(form.currentPin);
+      notify({
+        type: "success",
+        title: "Edit PIN removed",
+        message: "Everyone using this account can now edit.",
+      });
       onClose();
     } catch (removeError) {
       setError(removeError.message || "Unable to remove the edit PIN.");

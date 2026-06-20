@@ -46,4 +46,14 @@ export const BALANCE_ACTIONS = {
   ADD: "add",
   REDUCE: "reduce",
   EXPENSE_CASH_DEDUCTION: "expense_cash_deduction",
+  EXPENSE_GPAY_DEDUCTION: "expense_gpay_deduction",
+  EDIT_CASH_DEDUCTION: "edit_cash_deduction",
+  EDIT_CASH_REFUND: "edit_cash_refund",
+  EDIT_GPAY_DEDUCTION: "edit_gpay_deduction",
+  EDIT_GPAY_REFUND: "edit_gpay_refund",
 };
+
+export const BALANCE_TYPES = [
+  { label: "Cash Balance", value: "cash" },
+  { label: "GPay Balance", value: "gpay" },
+];
