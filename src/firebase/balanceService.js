@@ -1,20 +1,20 @@
 import {
-  collection,
   doc,
   getDocs,
   onSnapshot,
   runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "./firebaseConfig";
 import { BALANCE_ACTIONS } from "../utils/constants";
 import { getTodayDate } from "../utils/dateUtils";
 import { toNumber } from "../utils/totalUtils";
+import { db } from "./firebaseConfig";
+import { getUserCollection, getUserDocument } from "./userDataRefs";
 
 const SETTINGS_DOC_ID = "app";
 
 export function subscribeToBalance(callback, errorCallback) {
-  const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
+  const settingsRef = getUserDocument("settings", SETTINGS_DOC_ID);
 
   return onSnapshot(
     settingsRef,
@@ -31,8 +31,8 @@ export function subscribeToBalance(callback, errorCallback) {
 }
 
 export async function adjustBalance({ action, amount, reason }) {
-  const settingsRef = doc(db, "settings", SETTINGS_DOC_ID);
-  const historyRef = doc(collection(db, "balanceHistory"));
+  const settingsRef = getUserDocument("settings", SETTINGS_DOC_ID);
+  const historyRef = doc(getUserCollection("balanceHistory"));
 
   await runTransaction(db, async (transaction) => {
     const settingsSnap = await transaction.get(settingsRef);
@@ -42,6 +42,14 @@ export async function adjustBalance({ action, amount, reason }) {
       : 0;
 
     const amountNumber = toNumber(amount);
+
+    if (amountNumber <= 0) {
+      throw new Error("Balance adjustment amount must be greater than zero.");
+    }
+
+    if (![BALANCE_ACTIONS.ADD, BALANCE_ACTIONS.REDUCE].includes(action)) {
+      throw new Error("Invalid balance action.");
+    }
 
     const newBalance =
       action === BALANCE_ACTIONS.ADD
@@ -70,7 +78,7 @@ export async function adjustBalance({ action, amount, reason }) {
 }
 
 export async function getAllBalanceHistory() {
-  const snapshot = await getDocs(collection(db, "balanceHistory"));
+  const snapshot = await getDocs(getUserCollection("balanceHistory"));
 
   const items = snapshot.docs.map((historyDoc) => ({
     id: historyDoc.id,

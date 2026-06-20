@@ -1,5 +1,4 @@
 import {
-  collection,
   doc,
   getDocs,
   onSnapshot,
@@ -9,7 +8,6 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "./firebaseConfig";
 import { BALANCE_ACTIONS } from "../utils/constants";
 import { getTodayDate } from "../utils/dateUtils";
 import {
@@ -18,10 +16,12 @@ import {
   calculateTotal,
   toNumber,
 } from "../utils/totalUtils";
+import { db } from "./firebaseConfig";
+import { getUserCollection, getUserDocument } from "./userDataRefs";
 
 export function subscribeToExpensesByDate(date, callback, errorCallback) {
   const expensesQuery = query(
-    collection(db, "expenses"),
+    getUserCollection("expenses"),
     where("date", "==", date)
   );
 
@@ -47,18 +47,13 @@ export function subscribeToExpensesByDate(date, callback, errorCallback) {
 }
 
 export function subscribeToDailyTotal(date, callback, errorCallback) {
-  const totalRef = doc(db, "dailyTotals", date);
+  const totalRef = getUserDocument("dailyTotals", date);
 
   return onSnapshot(
     totalRef,
     (snapshot) => {
       if (!snapshot.exists()) {
-        callback({
-          date,
-          total: 0,
-          cashTotal: 0,
-          gpayTotal: 0,
-        });
+        callback({ date, total: 0, cashTotal: 0, gpayTotal: 0 });
         return;
       }
 
@@ -76,9 +71,9 @@ export function subscribeToDailyTotal(date, callback, errorCallback) {
 }
 
 export async function submitTodayExpenses({ date, draftItems }) {
-  const settingsRef = doc(db, "settings", "app");
-  const dailyTotalRef = doc(db, "dailyTotals", date);
-  const balanceHistoryRef = doc(collection(db, "balanceHistory"));
+  const settingsRef = getUserDocument("settings", "app");
+  const dailyTotalRef = getUserDocument("dailyTotals", date);
+  const balanceHistoryRef = doc(getUserCollection("balanceHistory"));
 
   const currentTransactionTotal = calculateTotal(draftItems);
   const currentTransactionCashTotal = calculateCashTotal(draftItems);
@@ -106,12 +101,8 @@ export async function submitTodayExpenses({ date, draftItems }) {
 
     const newBalance = oldBalance - currentTransactionCashTotal;
 
-    const newDailyTotal = oldDailyTotal + currentTransactionTotal;
-    const newDailyCashTotal = oldDailyCashTotal + currentTransactionCashTotal;
-    const newDailyGPayTotal = oldDailyGPayTotal + currentTransactionGPayTotal;
-
     draftItems.forEach((item) => {
-      const expenseRef = doc(collection(db, "expenses"));
+      const expenseRef = doc(getUserCollection("expenses"));
 
       transaction.set(expenseRef, {
         date,
@@ -130,9 +121,9 @@ export async function submitTodayExpenses({ date, draftItems }) {
       dailyTotalRef,
       {
         date,
-        total: newDailyTotal,
-        cashTotal: newDailyCashTotal,
-        gpayTotal: newDailyGPayTotal,
+        total: oldDailyTotal + currentTransactionTotal,
+        cashTotal: oldDailyCashTotal + currentTransactionCashTotal,
+        gpayTotal: oldDailyGPayTotal + currentTransactionGPayTotal,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -169,7 +160,7 @@ export async function submitTodayExpenses({ date, draftItems }) {
 
 export async function updateExpensesForDate({ date, items }) {
   const expensesQuery = query(
-    collection(db, "expenses"),
+    getUserCollection("expenses"),
     where("date", "==", date)
   );
 
@@ -192,19 +183,14 @@ export async function updateExpensesForDate({ date, items }) {
   }));
 
   cleanedItems.forEach((item) => {
-    const expenseRef = doc(collection(db, "expenses"));
-
-    batch.set(expenseRef, {
-      date,
-      ...item,
-    });
+    const expenseRef = doc(getUserCollection("expenses"));
+    batch.set(expenseRef, { date, ...item });
   });
 
   const total = calculateTotal(cleanedItems);
   const cashTotal = calculateCashTotal(cleanedItems);
   const gpayTotal = calculateGPayTotal(cleanedItems);
-
-  const dailyTotalRef = doc(db, "dailyTotals", date);
+  const dailyTotalRef = getUserDocument("dailyTotals", date);
 
   batch.set(
     dailyTotalRef,
@@ -220,15 +206,11 @@ export async function updateExpensesForDate({ date, items }) {
 
   await batch.commit();
 
-  return {
-    total,
-    cashTotal,
-    gpayTotal,
-  };
+  return { total, cashTotal, gpayTotal };
 }
 
 export async function getAllExpenses() {
-  const snapshot = await getDocs(collection(db, "expenses"));
+  const snapshot = await getDocs(getUserCollection("expenses"));
 
   const items = snapshot.docs.map((expenseDoc) => ({
     id: expenseDoc.id,
