@@ -28,77 +28,164 @@ function toDateKey(date) {
   return `${year}-${month}-${day}`;
 }
 
-function getDailyKeys(startDate, endDate) {
-  const keys = [];
-  const cursor = new Date(
-    startDate.getFullYear(),
-    startDate.getMonth(),
-    startDate.getDate()
-  );
+const MONTH_LABELS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
 
-  while (cursor <= endDate) {
-    keys.push(toDateKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  return keys;
+function addDays(date, amount) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + amount);
+  return result;
 }
 
-function getTrendSeries(items, range) {
+function getMonday(date) {
+  const day = date.getDay() || 7;
+  return addDays(date, 1 - day);
+}
+
+function getDaysInMonth(date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+function formatShortDate(date) {
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+  }).format(date);
+}
+
+function getSpendComparison(items, range) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dailyTotals = groupExpenses(items, (item) => item.date);
+  const monthlyTotals = groupExpenses(items, (item) => item.date?.slice(0, 7));
 
-  if (range === "thisYear") {
-    const monthlyTotals = groupExpenses(items, (item) => item.date?.slice(0, 7));
-
-    return Array.from({ length: today.getMonth() + 1 }, (_, index) => {
+  if (range === "yearly") {
+    const currentYear = today.getFullYear();
+    const previousYear = currentYear - 1;
+    const series = MONTH_LABELS.map((label, index) => {
       const month = String(index + 1).padStart(2, "0");
-      const key = `${today.getFullYear()}-${month}`;
-      return { label: key, value: monthlyTotals[key] || 0 };
+
+      return {
+        label,
+        current: index <= today.getMonth()
+          ? monthlyTotals[`${currentYear}-${month}`] || 0
+          : null,
+        previous: monthlyTotals[`${previousYear}-${month}`] || 0,
+      };
     });
+
+    return {
+      series,
+      currentLabel: "This Year Spend",
+      previousLabel: "Last Year Spend",
+    };
   }
 
-  let startDate;
-  let endDate = today;
+  let currentStart;
+  let previousStart;
+  let length;
+  let currentLabel;
+  let previousLabel;
 
-  if (range === "thisMonth") {
-    startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+  if (range === "monthly") {
+    currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    previousStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    length = Math.max(
+      getDaysInMonth(currentStart),
+      getDaysInMonth(previousStart)
+    );
+    currentLabel = "This Month Spend";
+    previousLabel = "Last Month Spend";
   } else if (range === "lastMonth") {
-    startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-    endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+    currentStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    previousStart = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+    length = Math.max(
+      getDaysInMonth(currentStart),
+      getDaysInMonth(previousStart)
+    );
+    currentLabel = "Last Month Spend";
+    previousLabel = "Previous Month Spend";
   } else {
-    startDate = new Date(today);
-    startDate.setDate(today.getDate() - 6);
+    currentStart = getMonday(today);
+    previousStart = addDays(currentStart, -7);
+    length = 7;
+    currentLabel = "This Week Spend";
+    previousLabel = "Last Week Spend";
   }
 
-  return getDailyKeys(startDate, endDate).map((key) => ({
-    label: key,
-    value: dailyTotals[key] || 0,
-  }));
+  const currentDays = range === "daily" ? length : getDaysInMonth(currentStart);
+  const previousDays = range === "daily" ? length : getDaysInMonth(previousStart);
+  const series = Array.from({ length }, (_, index) => {
+    const currentDate = addDays(currentStart, index);
+    const previousDate = addDays(previousStart, index);
+    const currentExists = index < currentDays && currentDate <= today;
+    const previousExists = index < previousDays;
+
+    return {
+      label:
+        range === "daily" ? formatShortDate(currentDate) : String(index + 1),
+      current: currentExists ? dailyTotals[toDateKey(currentDate)] || 0 : null,
+      previous: previousExists ? dailyTotals[toDateKey(previousDate)] || 0 : null,
+    };
+  });
+
+  return { series, currentLabel, previousLabel };
 }
 
-function formatTrendLabel(value = "") {
-  if (value.length === 7) {
-    const monthIndex = Number(value.slice(5, 7)) - 1;
-    return [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
-    ][monthIndex] || value;
-  }
+function getNiceStep(value) {
+  if (value <= 0) return 1;
 
-  const [, month, day] = value.split("-");
-  return month && day ? `${day}-${month}` : value;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalized = value / magnitude;
+
+  if (normalized <= 1) return magnitude;
+  if (normalized <= 2) return 2 * magnitude;
+  if (normalized <= 5) return 5 * magnitude;
+  return 10 * magnitude;
+}
+
+function formatAxisValue(value) {
+  if (value >= 10000000) return `${(value / 10000000).toFixed(1)}Cr`;
+  if (value >= 100000) return `${(value / 100000).toFixed(1)}L`;
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}K`;
+  return String(Math.round(value));
+}
+
+function createSmoothPath(points) {
+  if (points.length === 0) return "";
+  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+
+  return points.slice(0, -1).reduce((path, point, index) => {
+    const previous = points[index - 1] || point;
+    const next = points[index + 1];
+    const afterNext = points[index + 2] || next;
+    const minimumY = Math.min(point.y, next.y);
+    const maximumY = Math.max(point.y, next.y);
+    const controlOneY = Math.min(
+      maximumY,
+      Math.max(minimumY, point.y + (next.y - previous.y) / 6)
+    );
+    const controlTwoY = Math.min(
+      maximumY,
+      Math.max(minimumY, next.y - (afterNext.y - point.y) / 6)
+    );
+
+    return `${path} C ${point.x + (next.x - previous.x) / 6} ${controlOneY}, ${
+      next.x - (afterNext.x - point.x) / 6
+    } ${controlTwoY}, ${next.x} ${next.y}`;
+  }, `M ${points[0].x} ${points[0].y}`);
 }
 
 function HorizontalBars({ items, emptyMessage }) {
@@ -126,80 +213,175 @@ function HorizontalBars({ items, emptyMessage }) {
   );
 }
 
-function DailyTrendChart({ items }) {
-  if (items.length === 0) {
-    return <div className="analytics-empty">No spending trend available.</div>;
-  }
-
-  const width = 720;
-  const height = 220;
-  const left = 28;
-  const right = 20;
-  const top = 22;
+function SpendOverviewChart({ comparison }) {
+  const { series, currentLabel, previousLabel } = comparison;
+  const width = 820;
+  const height = 390;
+  const left = 56;
+  const right = 18;
+  const top = 18;
   const bottom = 42;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
-  const peakValue = Math.max(...items.map((item) => item.value), 0);
-  const maximum = Math.max(peakValue, 1);
-  const divisor = Math.max(items.length - 1, 1);
-  const points = items.map((item, index) => ({
-    ...item,
-    x: left + (index / divisor) * chartWidth,
-    y: top + chartHeight - (item.value / maximum) * chartHeight,
-  }));
-  const pointString = points.map((point) => `${point.x},${point.y}`).join(" ");
-  const firstDate = formatTrendLabel(points[0]?.label);
-  const lastDate = formatTrendLabel(points[points.length - 1]?.label);
+  const divisor = Math.max(series.length - 1, 1);
+  const numericValues = series.flatMap((item) =>
+    [item.current, item.previous].filter((value) => value !== null)
+  );
+  const peakValue = Math.max(...numericValues, 0);
+  const step = peakValue > 0 ? getNiceStep(peakValue / 4) : 25;
+  const maximum = step * 4;
+  const toPoint = (item, index, key) => {
+    const value = item[key];
+    if (value === null) return null;
+
+    return {
+      label: item.label,
+      value,
+      x: left + (index / divisor) * chartWidth,
+      y: top + chartHeight - (value / maximum) * chartHeight,
+    };
+  };
+  const currentPoints = series
+    .map((item, index) => toPoint(item, index, "current"))
+    .filter(Boolean);
+  const previousPoints = series
+    .map((item, index) => toPoint(item, index, "previous"))
+    .filter(Boolean);
+  const currentTotal = series.reduce(
+    (total, item) => total + (item.current || 0),
+    0
+  );
+  const previousTotal = series.reduce(
+    (total, item) => total + (item.previous || 0),
+    0
+  );
+  const changePercentage =
+    previousTotal > 0
+      ? ((currentTotal - previousTotal) / previousTotal) * 100
+      : currentTotal === 0
+      ? 0
+      : null;
+  const labelInterval = series.length <= 7 ? 1 : series.length <= 12 ? 2 : 5;
 
   return (
-    <div className="analytics-trend">
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label="Daily spending trend for the selected date range"
-      >
-        {[0, 0.5, 1].map((ratio) => {
-          const y = top + chartHeight * ratio;
-          return (
-            <line
-              key={ratio}
-              x1={left}
-              y1={y}
-              x2={width - right}
-              y2={y}
-              className="analytics-trend__grid"
-            />
-          );
-        })}
-        <polyline points={pointString} className="analytics-trend__line" />
-        {points.map((point) => (
-          <circle
-            key={point.label}
-            cx={point.x}
-            cy={point.y}
-            r="4"
-            className="analytics-trend__point"
-          >
-            <title>
-              {point.label}: {formatCurrency(point.value)}
-            </title>
-          </circle>
-        ))}
-        <text x={left} y={height - 12} className="analytics-trend__label">
-          {firstDate}
-        </text>
-        <text
-          x={width - right}
-          y={height - 12}
-          textAnchor="end"
-          className="analytics-trend__label"
+    <div className="spend-overview">
+      <div className="spend-overview__legend" aria-hidden="true">
+        <span>
+          <i className="spend-overview__legend-line spend-overview__legend-line--current" />
+          {currentLabel.replace(" Spend", "")}
+        </span>
+        <span>
+          <i className="spend-overview__legend-line spend-overview__legend-line--previous" />
+          {previousLabel.replace(" Spend", "")}
+        </span>
+      </div>
+
+      <div className="analytics-trend spend-overview__chart">
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          role="img"
+          aria-label={`${currentLabel} compared with ${previousLabel}`}
         >
-          {lastDate}
-        </text>
-        <text x={left} y={14} className="analytics-trend__value">
-          Peak {formatCurrency(peakValue)}
-        </text>
-      </svg>
+          {Array.from({ length: 5 }, (_, index) => {
+            const value = maximum - step * index;
+            const y = top + (index / 4) * chartHeight;
+
+            return (
+              <g key={value}>
+                <line
+                  x1={left}
+                  y1={y}
+                  x2={width - right}
+                  y2={y}
+                  className="analytics-trend__grid"
+                />
+                <text
+                  x={left - 12}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="analytics-trend__label analytics-trend__label--axis"
+                >
+                  {formatAxisValue(value)}
+                </text>
+              </g>
+            );
+          })}
+
+          <path
+            d={createSmoothPath(previousPoints)}
+            className="analytics-trend__line analytics-trend__line--previous"
+          />
+          <path
+            d={createSmoothPath(currentPoints)}
+            className="analytics-trend__line analytics-trend__line--current"
+          />
+
+          {[...previousPoints, ...currentPoints].map((point, index) => (
+            <circle
+              key={`${point.label}-${point.value}-${index}`}
+              cx={point.x}
+              cy={point.y}
+              r="9"
+              className="analytics-trend__hit-area"
+            >
+              <title>
+                {point.label}: {formatCurrency(point.value)}
+              </title>
+            </circle>
+          ))}
+
+          {series.map((item, index) => {
+            const shouldShow =
+              index === 0 ||
+              index === series.length - 1 ||
+              index % labelInterval === 0;
+
+            if (!shouldShow) return null;
+
+            return (
+              <text
+                key={`${item.label}-${index}`}
+                x={left + (index / divisor) * chartWidth}
+                y={height - 12}
+                textAnchor={
+                  index === 0
+                    ? "start"
+                    : index === series.length - 1
+                    ? "end"
+                    : "middle"
+                }
+                className="analytics-trend__label"
+              >
+                {item.label}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+
+      <div className="spend-overview__summary">
+        <div>
+          <span>{currentLabel}</span>
+          <strong>{formatCurrency(currentTotal)}</strong>
+        </div>
+        <div>
+          <span>{previousLabel}</span>
+          <strong>{formatCurrency(previousTotal)}</strong>
+        </div>
+        <span
+          className={`spend-overview__change ${
+            changePercentage !== null && changePercentage < 0
+              ? "spend-overview__change--down"
+              : "spend-overview__change--up"
+          }`}
+        >
+          {changePercentage === null
+            ? "No prior spend"
+            : `${changePercentage >= 0 ? "+" : ""}${changePercentage.toFixed(
+                1
+              )}%`}
+        </span>
+      </div>
     </div>
   );
 }
@@ -240,7 +422,7 @@ function PaymentSplit({ cashTotal, gpayTotal }) {
 }
 
 export function ReportsAnalytics({ items = [] }) {
-  const [trendRange, setTrendRange] = useState("last7");
+  const [trendRange, setTrendRange] = useState("daily");
 
   const analytics = useMemo(() => {
     const typeTotals = groupExpenses(items, (item) => item.type);
@@ -261,7 +443,7 @@ export function ReportsAnalytics({ items = [] }) {
     })).filter((item) => item.value > 0);
 
     return {
-      dailySeries: getTrendSeries(items, trendRange),
+      spendComparison: getSpendComparison(items, trendRange),
       typeSeries: toSortedSeries(typeTotals, 6),
       periodSeries: orderedPeriods,
       itemSeries: toSortedSeries(itemTotals, 6),
@@ -282,28 +464,25 @@ export function ReportsAnalytics({ items = [] }) {
 
       <div className="reports-analytics-grid">
         <article className="analytics-card analytics-card--trend">
-          <div className="analytics-card__header">
-            <div>
-              <span>Daily spending</span>
-              <h4>Daily Spending</h4>
-            </div>
+          <div className="analytics-card__header analytics-card__header--overview">
+            <h4>Spend Overview</h4>
             <label className="analytics-range-select">
-              <span>Graph range</span>
               <select
                 value={trendRange}
                 onChange={(event) => setTrendRange(event.target.value)}
+                aria-label="Spend overview range"
               >
-                <option value="last7">Last 7 Days</option>
-                <option value="thisMonth">This Month</option>
+                <option value="daily">Daily</option>
+                <option value="monthly">Monthly</option>
                 <option value="lastMonth">Last Month</option>
-                <option value="thisYear">This Year</option>
+                <option value="yearly">Yearly</option>
               </select>
             </label>
           </div>
-          <DailyTrendChart items={analytics.dailySeries} />
+          <SpendOverviewChart comparison={analytics.spendComparison} />
         </article>
 
-        <article className="analytics-card">
+        <article className="analytics-card analytics-card--payment">
           <div className="analytics-card__header">
             <div>
               <span>Distribution</span>
@@ -316,7 +495,7 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card">
+        <article className="analytics-card analytics-card--type">
           <div className="analytics-card__header">
             <div>
               <span>Categories</span>
@@ -329,7 +508,7 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card">
+        <article className="analytics-card analytics-card--period">
           <div className="analytics-card__header">
             <div>
               <span>Time of day</span>
@@ -342,7 +521,7 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card">
+        <article className="analytics-card analytics-card--items">
           <div className="analytics-card__header">
             <div>
               <span>Highest totals</span>

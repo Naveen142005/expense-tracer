@@ -5,7 +5,7 @@ function AuthShell({ title, subtitle, footerText, footerLink, footerLabel, child
     <main className="auth-page">
       <section className="auth-shell">
         <div className="auth-brand-panel">
-          <p className="auth-brand-kicker">Naveen's Tracker</p>
+          <p className="auth-brand-kicker">Rama the Mass</p>
           <h1>Your daily spending, kept personal.</h1>
           <p>Track expenses, balances, and reports from any device.</p>
         </div>

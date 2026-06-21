@@ -482,7 +482,7 @@
 /* Large devices: background on complete auth page */
 @media (min-width: 701px) {
   .auth-page {
-    background-image: url("");
+    background-image: url("../assets/WhatsApp\ Image\ 2026-06-20\ at\ 3.01.12\ PM.jpeg");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -506,7 +506,7 @@
   .auth-shell {
     position: relative;
     isolation: isolate;
-    background-image: url("");
+    background-image: url("../assets/WhatsApp\ Image\ 2026-06-20\ at\ 3.01.12\ PM.jpeg");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;

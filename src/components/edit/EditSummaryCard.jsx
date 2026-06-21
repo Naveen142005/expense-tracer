@@ -27,8 +27,9 @@ function EditSummaryCard({ total = 0, cashTotal = 0, gpayTotal = 0, count = 0 })
         </div>
       </div>
 
-      <p className="warning-text" style={{display: "none"}}>
-      
+      <p className="warning-text">
+        Note: Editing data here will not change Current Balance. Please adjust
+        balance manually if needed.
       </p>
     </div>
   );
