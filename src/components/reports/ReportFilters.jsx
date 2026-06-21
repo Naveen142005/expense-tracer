@@ -3,7 +3,9 @@ import Button from "../common/Button";
 import Input from "../common/Input";
 import Select from "../common/Select";
 
-function ReportFilters({ filters, onChange, onReset }) {
+function ReportFilters({ filters, activeReport, onChange, onReset }) {
+  const isBalanceHistory = activeReport === "balance";
+
   function handleChange(event) {
     const { name, value } = event.target;
     onChange(name, value);
@@ -35,46 +37,45 @@ function ReportFilters({ filters, onChange, onReset }) {
           onChange={handleChange}
         />
 
-        <Select
-          label="Type"
-          name="type"
-          value={filters.type}
-          onChange={handleChange}
-          options={[
-            { label: "All Types", value: "all" },
-            ...EXPENSE_TYPES,
-          ]}
-        />
+        {!isBalanceHistory && (
+          <Select
+            label="Type"
+            name="type"
+            value={filters.type}
+            onChange={handleChange}
+            options={[
+              { label: "All Types", value: "all" },
+              ...EXPENSE_TYPES,
+            ]}
+          />
+        )}
 
         <Select
-          label="Payment"
+          label={isBalanceHistory ? "Balance" : "Payment"}
           name="paymentType"
           value={filters.paymentType}
           onChange={handleChange}
           options={[
-            { label: "All Payments", value: "all" },
+            {
+              label: isBalanceHistory ? "All Balances" : "All Payments",
+              value: "all",
+            },
             ...PAYMENT_TYPES,
           ]}
         />
 
-        <Select
-          label="Period"
-          name="period"
-          value={filters.period}
-          onChange={handleChange}
-          options={[
-            { label: "All Periods", value: "all" },
-            ...PERIODS,
-          ]}
-        />
-
-        <Input
-          label="Search"
-          name="search"
-          value={filters.search}
-          onChange={handleChange}
-          placeholder="Search item or description"
-        />
+        {!isBalanceHistory && (
+          <Select
+            label="Period"
+            name="period"
+            value={filters.period}
+            onChange={handleChange}
+            options={[
+              { label: "All Periods", value: "all" },
+              ...PERIODS,
+            ]}
+          />
+        )}
       </div>
     </div>
   );

@@ -7,6 +7,11 @@ function getItemName(item) {
   return item.name || item.description || "-";
 }
 
+function getPeriodSortOrder(value) {
+  const index = PERIODS.findIndex((period) => period.value === value);
+  return index === -1 ? PERIODS.length : index;
+}
+
 function TodayOverviewTable({ items = [] }) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -74,6 +79,13 @@ function TodayOverviewTable({ items = [] }) {
 
       if (key === "price") {
         return (toNumber(a.price) - toNumber(b.price)) * directionValue;
+      }
+
+      if (key === "period") {
+        return (
+          (getPeriodSortOrder(a.period) - getPeriodSortOrder(b.period)) *
+          directionValue
+        );
       }
 
       const aValue = String(a[key] || "").toLowerCase();

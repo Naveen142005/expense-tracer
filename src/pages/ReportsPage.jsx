@@ -38,7 +38,6 @@ const defaultFilters = {
   type: "all",
   paymentType: "all",
   period: "all",
-  search: "",
 };
 
 function groupItemTotals(items) {
@@ -106,13 +105,7 @@ function ReportsPage() {
   }
 
   const filteredExpenses = useMemo(() => {
-    const searchText = filters.search.trim().toLowerCase();
-
     return expenses.filter((item) => {
-      const itemText = `${item.name || ""} ${item.description || ""}`
-        .toLowerCase()
-        .trim();
-
       const dateMatch = isDateInRange(
         item.date,
         filters.startDate,
@@ -128,9 +121,7 @@ function ReportsPage() {
       const periodMatch =
         filters.period === "all" || item.period === filters.period;
 
-      const searchMatch = !searchText || itemText.includes(searchText);
-
-      return dateMatch && typeMatch && paymentMatch && periodMatch && searchMatch;
+      return dateMatch && typeMatch && paymentMatch && periodMatch;
     });
   }, [expenses, filters]);
 
@@ -223,7 +214,9 @@ function ReportsPage() {
     if (activeReport === "month") return <DateWiseReport data={monthTotals} title="Month-wise Total" />;
     if (activeReport === "item") return <ItemWiseReport data={itemTotals} />;
     if (activeReport === "history") return <FullHistoryTable items={filteredExpenses} />;
-    if (activeReport === "balance") return <BalanceHistoryTable items={balanceHistory} />;
+    if (activeReport === "balance") {
+      return <BalanceHistoryTable items={balanceHistory} filters={filters} />;
+    }
 
     if (activeReport === "export") {
       return (
@@ -329,6 +322,7 @@ function ReportsPage() {
 
           <ReportFilters
             filters={filters}
+            activeReport={activeReport}
             onChange={handleFilterChange}
             onReset={handleResetFilters}
           />

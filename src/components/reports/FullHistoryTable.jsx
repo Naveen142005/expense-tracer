@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import EmptyState from "../common/EmptyState";
+import TablePagination from "../common/TablePagination";
 import { EXPENSE_TYPES, PERIODS } from "../../utils/constants";
 import { formatDisplayDate } from "../../utils/dateUtils";
 import { formatCurrency, toNumber } from "../../utils/totalUtils";
 
 function getItemName(item) {
   return item.name || item.description || "-";
+}
+
+function getPeriodSortOrder(value) {
+  const index = PERIODS.findIndex((period) => period.value === value);
+  return index === -1 ? PERIODS.length : index;
 }
 
 function SortIcon({ active, direction }) {
@@ -78,6 +84,7 @@ function SortIcon({ active, direction }) {
 function FullHistoryTable({ items = [] }) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [sortConfig, setSortConfig] = useState({
     key: "index",
     direction: "asc",
@@ -134,8 +141,16 @@ function FullHistoryTable({ items = [] }) {
           periodFilter === "all" || item.period === periodFilter;
 
         const typeMatch = typeFilter === "all" || item.type === typeFilter;
+        const normalizedSearch = searchQuery.trim().toLowerCase();
+        const searchText = `${item.date || ""} ${item.period || ""} ${
+          item.type || ""
+        } ${item.nameText} ${item.paymentType || ""} ${item.price || ""}`
+          .toLowerCase()
+          .trim();
+        const searchMatch =
+          !normalizedSearch || searchText.includes(normalizedSearch);
 
-        return periodMatch && typeMatch;
+        return periodMatch && typeMatch && searchMatch;
       });
 
     return [...filteredItems].sort((a, b) => {
@@ -150,6 +165,13 @@ function FullHistoryTable({ items = [] }) {
         return (toNumber(a.price) - toNumber(b.price)) * directionValue;
       }
 
+      if (key === "period") {
+        return (
+          (getPeriodSortOrder(a.period) - getPeriodSortOrder(b.period)) *
+          directionValue
+        );
+      }
+
       if (key === "date") {
         return (
           String(a.date || "").localeCompare(String(b.date || "")) *
@@ -162,7 +184,7 @@ function FullHistoryTable({ items = [] }) {
 
       return aValue.localeCompare(bValue) * directionValue;
     });
-  }, [items, periodFilter, typeFilter, sortConfig]);
+  }, [items, periodFilter, typeFilter, searchQuery, sortConfig]);
 
   const totalPages = Math.max(
     1,
@@ -174,6 +196,7 @@ function FullHistoryTable({ items = [] }) {
   }, [
     periodFilter,
     typeFilter,
+    searchQuery,
     rowsPerPage,
     sortConfig.key,
     sortConfig.direction,
@@ -249,6 +272,16 @@ function FullHistoryTable({ items = [] }) {
         </div>
       </div>
 
+      <div className="history-search-field">
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Search expenses..."
+          aria-label="Search full expense history"
+        />
+      </div>
+
       {items.length === 0 ? (
         <EmptyState title="No expenses found" message="No data available." />
       ) : filteredAndSortedItems.length === 0 ? (
@@ -294,61 +327,16 @@ function FullHistoryTable({ items = [] }) {
             </table>
           </div>
 
-          <div className="pagination-bar">
-            <div className="pagination-info">
-              Showing <strong>{startIndex + 1}</strong> to{" "}
-              <strong>{Math.min(endIndex, filteredAndSortedItems.length)}</strong>{" "}
-              of <strong>{filteredAndSortedItems.length}</strong>
-            </div>
-
-            <div className="pagination-controls">
-              <select
-                value={rowsPerPage}
-                onChange={(event) => setRowsPerPage(Number(event.target.value))}
-              >
-                <option value={5}>5 / page</option>
-                <option value={10}>10 / page</option>
-                <option value={25}>25 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-
-              <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(1)}
-              >
-                First
-              </button>
-
-              <button
-                type="button"
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage((prev) => prev - 1)}
-              >
-                Prev
-              </button>
-
-              <span>
-                Page <strong>{currentPage}</strong> / {totalPages}
-              </span>
-
-              <button
-                type="button"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage((prev) => prev + 1)}
-              >
-                Next
-              </button>
-
-              <button
-                type="button"
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(totalPages)}
-              >
-                Last
-              </button>
-            </div>
-          </div>
+          <TablePagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            rowsPerPage={rowsPerPage}
+            totalItems={filteredAndSortedItems.length}
+            startIndex={startIndex}
+            endIndex={endIndex}
+            onPageChange={setCurrentPage}
+            onRowsPerPageChange={setRowsPerPage}
+          />
         </>
       )}
     </div>
