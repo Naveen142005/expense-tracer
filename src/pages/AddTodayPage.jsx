@@ -237,7 +237,7 @@ function AddTodayPage() {
   }
 
   return (
-    <section>
+    <section className="app-workspace add-today-page">
       <div className="page-heading">
         <div>
           <h2 className="page-title">Add Today Expense</h2>
@@ -273,7 +273,7 @@ function AddTodayPage() {
 
       <div className="add-today-grid">
         <div className="left-column">
-          <div className="card">
+          <div className="card selection-card selection-card--period">
             <h3>Select Period</h3>
             <PeriodTabs
               activePeriod={activePeriod}
@@ -282,7 +282,7 @@ function AddTodayPage() {
             />
           </div>
 
-          <div className="card">
+          <div className="card selection-card selection-card--type">
             <h3>Select Type</h3>
             <ExpenseTypeSelector
               selectedType={selectedType}

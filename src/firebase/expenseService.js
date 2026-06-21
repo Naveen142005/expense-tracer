@@ -1,10 +1,12 @@
 import {
+  deleteDoc,
   doc,
   getDocs,
   onSnapshot,
   query,
   runTransaction,
   serverTimestamp,
+  setDoc,
   where,
 } from "firebase/firestore";
 import { BALANCE_ACTIONS } from "../utils/constants";
@@ -27,6 +29,87 @@ import {
 } from "./userDataRefs";
 
 const BALANCE_MODEL_VERSION = 2;
+
+export function subscribeToExpenseTemplates(callback, errorCallback) {
+  return onSnapshot(
+    getUserCollection("expenseTemplates"),
+    (snapshot) => {
+      const templates = snapshot.docs
+        .map((templateDoc) => ({
+          id: templateDoc.id,
+          ...templateDoc.data(),
+        }))
+        .sort((a, b) => {
+          const aLabel = a.type === "bus" ? a.description : a.name;
+          const bLabel = b.type === "bus" ? b.description : b.name;
+          return String(aLabel || "").localeCompare(String(bLabel || ""));
+        });
+
+      callback(templates);
+    },
+    errorCallback
+  );
+}
+
+export async function saveExpenseTemplate({
+  id,
+  type,
+  name,
+  description,
+  price,
+  paymentType,
+}) {
+  assertClientEditAccess(requireUserId());
+
+  const cleanName = type === "bus" ? "" : String(name || "").trim();
+  const cleanDescription =
+    type === "bus" ? String(description || "").trim() : "";
+  const templateLabel = type === "bus" ? cleanDescription : cleanName;
+  const priceNumber = toNumber(price);
+
+  if (!["food", "snacks", "bus", "custom"].includes(type)) {
+    throw new Error("Template expense type is invalid.");
+  }
+
+  if (!templateLabel) {
+    throw new Error("Template name or description is required.");
+  }
+
+  if (priceNumber <= 0) {
+    throw new Error("Template price must be greater than zero.");
+  }
+
+  if (!["cash", "gpay"].includes(paymentType)) {
+    throw new Error("Template payment type is invalid.");
+  }
+
+  const templateRef = id
+    ? getUserDocument("expenseTemplates", id)
+    : doc(getUserCollection("expenseTemplates"));
+
+  await setDoc(
+    templateRef,
+    {
+      type,
+      name: cleanName,
+      description: cleanDescription,
+      price: priceNumber,
+      paymentType,
+      ...(id ? {} : { createdAt: serverTimestamp() }),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return templateRef.id;
+}
+
+export async function deleteExpenseTemplate(templateId) {
+  assertClientEditAccess(requireUserId());
+
+  if (!templateId) throw new Error("Template ID is required.");
+  await deleteDoc(getUserDocument("expenseTemplates", templateId));
+}
 
 function getWalletBalances(data = {}) {
   const cashBalance =

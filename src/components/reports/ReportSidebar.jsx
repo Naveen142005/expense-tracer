@@ -40,7 +40,10 @@ function ReportSidebar({ activeReport, onChange, isOpen, onToggle }) {
       }
     >
       <div className="report-sidebar__header">
-        <h3>Report Menu</h3>
+        <div>
+          <span className="report-sidebar__eyebrow">Explore</span>
+          <h3>Report Views</h3>
+        </div>
 
         <button
           type="button"
@@ -63,8 +66,11 @@ function ReportSidebar({ activeReport, onChange, isOpen, onToggle }) {
                 : "report-sidebar__btn"
             }
             onClick={() => onChange(item.value)}
+            aria-current={activeReport === item.value ? "page" : undefined}
           >
-            {item.label}
+            <span className="report-sidebar__btn-marker" aria-hidden="true" />
+            <span className="report-sidebar__btn-label">{item.label}</span>
+            <span className="report-sidebar__btn-arrow" aria-hidden="true" />
           </button>
         ))}
       </div>

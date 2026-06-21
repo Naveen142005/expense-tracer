@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DetailModal } from "../common/ConfirmModal";
 import EmptyState from "../common/EmptyState";
 import { EXPENSE_TYPES, PERIODS } from "../../utils/constants";
 import { formatCurrency, toNumber } from "../../utils/totalUtils";
@@ -15,6 +16,7 @@ function getPeriodSortOrder(value) {
 function TodayOverviewTable({ items = [] }) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [selectedItem, setSelectedItem] = useState(null);
   const [sortConfig, setSortConfig] = useState({
     key: "index",
     direction: "asc",
@@ -173,39 +175,137 @@ function TodayOverviewTable({ items = [] }) {
           message="Change period or type filter to see more data."
         />
       ) : (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                {visibleColumns.map((column) => (
-                  <th key={column.key}>
-                    <button
-                      type="button"
-                      className="table-sort-btn"
-                      onClick={() => handleSort(column.key)}
-                    >
-                      {column.label}
-                      <span>{getSortIcon(column.key)}</span>
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredAndSortedItems.map((item, index) => (
-                <tr key={item.id}>
+        <>
+          <div className="table-wrapper responsive-table--desktop">
+            <table>
+              <thead>
+                <tr>
                   {visibleColumns.map((column) => (
-                    <td key={column.key}>
-                      {renderCell(item, column.key, index)}
-                    </td>
+                    <th
+                      key={column.key}
+                      className={
+                        column.key === "nameText"
+                          ? "table-cell--description"
+                          : ""
+                      }
+                    >
+                      <button
+                        type="button"
+                        className="table-sort-btn"
+                        onClick={() => handleSort(column.key)}
+                      >
+                        {column.label}
+                        <span>{getSortIcon(column.key)}</span>
+                      </button>
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+
+              <tbody>
+                {filteredAndSortedItems.map((item, index) => (
+                  <tr key={item.id}>
+                    {visibleColumns.map((column) => (
+                      <td
+                        key={column.key}
+                        className={
+                          column.key === "nameText"
+                            ? "table-cell--description"
+                            : ""
+                        }
+                      >
+                        {renderCell(item, column.key, index)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="responsive-table--mobile">
+            <table className="compact-mobile-table">
+              <thead>
+                <tr>
+                  {[
+                    { label: "Period", key: "period", className: "date" },
+                    { label: "Item", key: "nameText", className: "item" },
+                    {
+                      label: "Payment",
+                      key: "paymentType",
+                      className: "payment",
+                    },
+                    { label: "Price", key: "price", className: "amount" },
+                  ].map((column) => (
+                    <th
+                      key={column.key}
+                      className={`compact-mobile-table__${column.className}`}
+                    >
+                      <button
+                        type="button"
+                        className="table-sort-btn"
+                        onClick={() => handleSort(column.key)}
+                      >
+                        {column.label}
+                        <span>{getSortIcon(column.key)}</span>
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAndSortedItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    role="button"
+                    tabIndex="0"
+                    onClick={() => setSelectedItem(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedItem(item);
+                      }
+                    }}
+                    aria-label={`View details for ${item.nameText}`}
+                  >
+                    <td className="compact-mobile-table__date">
+                      {item.period || "-"}
+                    </td>
+                    <td className="compact-mobile-table__item">{item.nameText}</td>
+                    <td className="compact-mobile-table__payment">
+                      {item.paymentType || "-"}
+                    </td>
+                    <td className="compact-mobile-table__amount">
+                      {formatCurrency(item.price)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
+
+      <DetailModal
+        isOpen={Boolean(selectedItem)}
+        title="Expense Details"
+        fields={
+          selectedItem
+            ? [
+                {
+                  label: "Status",
+                  value: selectedItem.isDraft ? "Draft" : "Saved",
+                },
+                { label: "Period", value: selectedItem.period || "-" },
+                { label: "Type", value: selectedItem.type || "-" },
+                { label: "Name / Description", value: selectedItem.nameText },
+                { label: "Payment", value: selectedItem.paymentType || "-" },
+                { label: "Price", value: formatCurrency(selectedItem.price) },
+              ]
+            : []
+        }
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   );
 }

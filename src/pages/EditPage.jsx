@@ -268,7 +268,7 @@ function EditPage() {
   }
 
   return (
-    <section>
+    <section className="app-workspace edit-page">
       <div className="page-heading">
         <div>
           <h2 className="page-title">Edit Expense</h2>

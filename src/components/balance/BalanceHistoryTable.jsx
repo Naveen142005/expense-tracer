@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DetailModal } from "../common/ConfirmModal";
 import EmptyState from "../common/EmptyState";
 import TablePagination from "../common/TablePagination";
 import { formatDisplayDate, isDateInRange } from "../../utils/dateUtils";
@@ -34,15 +35,35 @@ function formatBalanceType(balanceType) {
 function formatAction(action = "") {
   if (action === "add") return "Added";
   if (action === "reduce") return "Reduced";
-  if (action.startsWith("edit_") && action.endsWith("_deduction")) {
-    return "Edit deduction";
-  }
-  if (action.startsWith("edit_") && action.endsWith("_refund")) {
-    return "Edit refund";
-  }
-  if (action.includes("expense")) return "Expense deduction";
+  if (action.endsWith("_refund")) return "Refunded";
+  if (action.endsWith("_deduction")) return "Deduction";
 
   return action || "-";
+}
+
+function getActionTone(action = "") {
+  if (action === "add") return "added";
+  if (action === "reduce") return "reduced";
+  if (action.startsWith("edit_") && action.endsWith("_refund")) {
+    return "edit-refund";
+  }
+  if (action.startsWith("edit_") && action.endsWith("_deduction")) {
+    return "edit-deduction";
+  }
+  if (action.includes("expense")) return "expense";
+  return "neutral";
+}
+
+function renderActionBadge(action) {
+  return (
+    <span
+      className={`balance-action-badge balance-action-badge--${getActionTone(
+        action
+      )}`}
+    >
+      {formatAction(action)}
+    </span>
+  );
 }
 
 function getShortfallChange(item) {
@@ -88,6 +109,7 @@ function SortIcon({ active, direction }) {
 
 function BalanceHistoryTable({ items = [], filters = {} }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedItem, setSelectedItem] = useState(null);
   const [sortConfig, setSortConfig] = useState({
     key: "index",
     direction: "asc",
@@ -199,7 +221,7 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
     if (columnKey === "index") return startIndex + index + 1;
     if (columnKey === "date") return formatDisplayDate(item.date);
     if (columnKey === "balanceType") return formatBalanceType(item.balanceType);
-    if (columnKey === "action") return formatAction(item.action);
+    if (columnKey === "action") return renderActionBadge(item.action);
     if (columnKey === "amount") return formatCurrency(item.amount);
     if (columnKey === "appliedAmount") {
       return formatCurrency(item.appliedAmount ?? item.amount);
@@ -248,12 +270,17 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
         />
       ) : (
         <>
-          <div className="table-wrapper">
+          <div className="table-wrapper responsive-table--desktop">
             <table>
               <thead>
                 <tr>
                   {BALANCE_HISTORY_COLUMNS.map((column) => (
-                    <th key={column.key}>
+                    <th
+                      key={column.key}
+                      className={
+                        column.key === "action" ? "table-cell--action" : ""
+                      }
+                    >
                       <button
                         type="button"
                         className="table-sort-btn"
@@ -274,10 +301,83 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
                 {paginatedItems.map((item, index) => (
                   <tr key={item.id}>
                     {BALANCE_HISTORY_COLUMNS.map((column) => (
-                      <td key={column.key}>
+                      <td
+                        key={column.key}
+                        className={
+                          column.key === "action" ? "table-cell--action" : ""
+                        }
+                      >
                         {renderCell(item, column.key, index)}
                       </td>
                     ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="responsive-table--mobile">
+            <table className="compact-mobile-table">
+              <thead>
+                <tr>
+                  {[
+                    { label: "Date", key: "date", className: "date" },
+                    {
+                      label: "Balance",
+                      key: "balanceType",
+                      className: "item",
+                    },
+                    { label: "Action", key: "action", className: "payment" },
+                    { label: "Amount", key: "amount", className: "amount" },
+                  ].map((column) => (
+                    <th
+                      key={column.key}
+                      className={`compact-mobile-table__${column.className}`}
+                    >
+                      <button
+                        type="button"
+                        className="table-sort-btn"
+                        onClick={() => handleSort(column.key)}
+                      >
+                        <span>{column.label}</span>
+                        <SortIcon
+                          active={sortConfig.key === column.key}
+                          direction={sortConfig.direction}
+                        />
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    role="button"
+                    tabIndex="0"
+                    onClick={() => setSelectedItem(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedItem(item);
+                      }
+                    }}
+                    aria-label={`View ${formatBalanceType(
+                      item.balanceType
+                    )} balance details`}
+                  >
+                    <td className="compact-mobile-table__date">
+                      {formatDisplayDate(item.date)}
+                    </td>
+                    <td className="compact-mobile-table__item">
+                      {formatBalanceType(item.balanceType)}
+                    </td>
+                    <td className="compact-mobile-table__payment">
+                      {renderActionBadge(item.action)}
+                    </td>
+                    <td className="compact-mobile-table__amount">
+                      {formatCurrency(item.amount)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -296,6 +396,54 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
           />
         </>
       )}
+
+      <DetailModal
+        isOpen={Boolean(selectedItem)}
+        title="Balance Details"
+        fields={
+          selectedItem
+            ? [
+                { label: "Date", value: formatDisplayDate(selectedItem.date) },
+                {
+                  label: "Balance",
+                  value: formatBalanceType(selectedItem.balanceType),
+                },
+                { label: "Action", value: formatAction(selectedItem.action) },
+                {
+                  label: "Requested",
+                  value: formatCurrency(selectedItem.amount),
+                },
+                {
+                  label: "Applied",
+                  value: formatCurrency(
+                    selectedItem.appliedAmount ?? selectedItem.amount
+                  ),
+                },
+                {
+                  label: "Shortfall Change",
+                  value: renderCell(selectedItem, "shortfallChange", 0),
+                },
+                {
+                  label: "Old Balance",
+                  value: formatCurrency(selectedItem.oldBalance),
+                },
+                {
+                  label: "New Balance",
+                  value: formatCurrency(selectedItem.newBalance),
+                },
+                {
+                  label: "Total After",
+                  value:
+                    selectedItem.newTotalBalance === undefined
+                      ? "-"
+                      : formatCurrency(selectedItem.newTotalBalance),
+                },
+                { label: "Reason", value: selectedItem.reason || "-" },
+              ]
+            : []
+        }
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   );
 }

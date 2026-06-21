@@ -9,7 +9,7 @@ function ExpenseDraftList({
   disabled = false,
 }) {
   return (
-    <div className="card">
+    <div className="card expense-draft-card">
       <div className="card-header">
         <h3>Current Draft Items</h3>
 

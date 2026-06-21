@@ -14,7 +14,10 @@ function ReportFilters({ filters, activeReport, onChange, onReset }) {
   return (
     <div className="card report-filters">
       <div className="card-header">
-        <h3>Report Filters</h3>
+        <div>
+          <span className="report-filters__eyebrow">Live filters</span>
+          <h3>Filter Options</h3>
+        </div>
         <Button variant="secondary" size="sm" onClick={onReset}>
           Reset
         </Button>

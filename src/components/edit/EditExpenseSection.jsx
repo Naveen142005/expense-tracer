@@ -14,7 +14,7 @@ function EditExpenseSection({
 
   return (
     <div className="edit-section">
-      <div className="card">
+      <div className="card edit-period-card">
         <h3>Select Period</h3>
         <PeriodTabs activePeriod={activePeriod} onChange={onPeriodChange} />
       </div>

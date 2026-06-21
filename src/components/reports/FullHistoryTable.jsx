@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { DetailModal } from "../common/ConfirmModal";
 import EmptyState from "../common/EmptyState";
 import TablePagination from "../common/TablePagination";
 import { EXPENSE_TYPES, PERIODS } from "../../utils/constants";
@@ -85,6 +86,7 @@ function FullHistoryTable({ items = [] }) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedItem, setSelectedItem] = useState(null);
   const [sortConfig, setSortConfig] = useState({
     key: "index",
     direction: "asc",
@@ -291,12 +293,19 @@ function FullHistoryTable({ items = [] }) {
         />
       ) : (
         <>
-          <div className="table-wrapper full-history-table-wrapper">
+          <div className="table-wrapper full-history-table-wrapper responsive-table--desktop">
             <table className="full-history-table">
               <thead>
                 <tr>
                   {visibleColumns.map((column) => (
-                    <th key={column.key}>
+                    <th
+                      key={column.key}
+                      className={
+                        column.key === "nameText"
+                          ? "table-cell--description"
+                          : ""
+                      }
+                    >
                       <button
                         type="button"
                         className="table-sort-btn"
@@ -317,10 +326,81 @@ function FullHistoryTable({ items = [] }) {
                 {paginatedItems.map((item, index) => (
                   <tr key={item.id}>
                     {visibleColumns.map((column) => (
-                      <td key={column.key}>
+                      <td
+                        key={column.key}
+                        className={
+                          column.key === "nameText"
+                            ? "table-cell--description"
+                            : ""
+                        }
+                      >
                         {renderCell(item, column.key, index)}
                       </td>
                     ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="responsive-table--mobile">
+            <table className="compact-mobile-table">
+              <thead>
+                <tr>
+                  {[
+                    { label: "Date", key: "date", className: "date" },
+                    { label: "Item", key: "nameText", className: "item" },
+                    {
+                      label: "Payment",
+                      key: "paymentType",
+                      className: "payment",
+                    },
+                    { label: "Price", key: "price", className: "amount" },
+                  ].map((column) => (
+                    <th
+                      key={column.key}
+                      className={`compact-mobile-table__${column.className}`}
+                    >
+                      <button
+                        type="button"
+                        className="table-sort-btn"
+                        onClick={() => handleSort(column.key)}
+                      >
+                        <span>{column.label}</span>
+                        <SortIcon
+                          active={sortConfig.key === column.key}
+                          direction={sortConfig.direction}
+                        />
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedItems.map((item) => (
+                  <tr
+                    key={item.id}
+                    role="button"
+                    tabIndex="0"
+                    onClick={() => setSelectedItem(item)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedItem(item);
+                      }
+                    }}
+                    aria-label={`View details for ${item.nameText}`}
+                  >
+                    <td className="compact-mobile-table__date">
+                      {formatDisplayDate(item.date)}
+                    </td>
+                    <td className="compact-mobile-table__item">{item.nameText}</td>
+                    <td className="compact-mobile-table__payment">
+                      {item.paymentType || "-"}
+                    </td>
+                    <td className="compact-mobile-table__amount">
+                      {formatCurrency(item.price)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -339,6 +419,24 @@ function FullHistoryTable({ items = [] }) {
           />
         </>
       )}
+
+      <DetailModal
+        isOpen={Boolean(selectedItem)}
+        title="Expense Details"
+        fields={
+          selectedItem
+            ? [
+                { label: "Date", value: formatDisplayDate(selectedItem.date) },
+                { label: "Period", value: selectedItem.period || "-" },
+                { label: "Type", value: selectedItem.type || "-" },
+                { label: "Name / Description", value: selectedItem.nameText },
+                { label: "Payment", value: selectedItem.paymentType || "-" },
+                { label: "Price", value: formatCurrency(selectedItem.price) },
+              ]
+            : []
+        }
+        onClose={() => setSelectedItem(null)}
+      />
     </div>
   );
 }
