@@ -99,6 +99,8 @@ function getSpendComparison(items, range) {
   let currentLabel;
   let previousLabel;
 
+  const isWeekly = range === "thisWeek" || range === "lastWeek";
+
   if (range === "monthly") {
     currentStart = new Date(today.getFullYear(), today.getMonth(), 1);
     previousStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
@@ -125,8 +127,8 @@ function getSpendComparison(items, range) {
     previousLabel = "Last Week Spend";
   }
 
-  const currentDays = range === "daily" ? length : getDaysInMonth(currentStart);
-  const previousDays = range === "daily" ? length : getDaysInMonth(previousStart);
+  const currentDays = isWeekly ? length : getDaysInMonth(currentStart);
+  const previousDays = isWeekly ? length : getDaysInMonth(previousStart);
   const series = Array.from({ length }, (_, index) => {
     const currentDate = addDays(currentStart, index);
     const previousDate = addDays(previousStart, index);
@@ -134,8 +136,9 @@ function getSpendComparison(items, range) {
     const previousExists = index < previousDays;
 
     return {
-      label:
-        range === "daily" ? formatShortDate(currentDate) : String(index + 1),
+      label: isWeekly
+        ? formatShortDate(range === "lastWeek" ? previousDate : currentDate)
+        : String(index + 1),
       current: currentExists ? dailyTotals[toDateKey(currentDate)] || 0 : null,
       previous: previousExists ? dailyTotals[toDateKey(previousDate)] || 0 : null,
     };
@@ -213,7 +216,7 @@ function HorizontalBars({ items, emptyMessage }) {
   );
 }
 
-function SpendOverviewChart({ comparison }) {
+function SpendOverviewChart({ comparison, selectedRange }) {
   const { series, currentLabel, previousLabel } = comparison;
   const width = 820;
   const height = 390;
@@ -224,9 +227,12 @@ function SpendOverviewChart({ comparison }) {
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
   const divisor = Math.max(series.length - 1, 1);
-  const numericValues = series.flatMap((item) =>
-    [item.current, item.previous].filter((value) => value !== null)
-  );
+  const selectedKey = selectedRange === "lastWeek" ? "previous" : "current";
+  const selectedLabel =
+    selectedKey === "previous" ? previousLabel : currentLabel;
+  const numericValues = series
+    .map((item) => item[selectedKey])
+    .filter((value) => value !== null);
   const peakValue = Math.max(...numericValues, 0);
   const step = peakValue > 0 ? getNiceStep(peakValue / 4) : 25;
   const maximum = step * 4;
@@ -241,11 +247,8 @@ function SpendOverviewChart({ comparison }) {
       y: top + chartHeight - (value / maximum) * chartHeight,
     };
   };
-  const currentPoints = series
-    .map((item, index) => toPoint(item, index, "current"))
-    .filter(Boolean);
-  const previousPoints = series
-    .map((item, index) => toPoint(item, index, "previous"))
+  const selectedPoints = series
+    .map((item, index) => toPoint(item, index, selectedKey))
     .filter(Boolean);
   const currentTotal = series.reduce(
     (total, item) => total + (item.current || 0),
@@ -255,12 +258,25 @@ function SpendOverviewChart({ comparison }) {
     (total, item) => total + (item.previous || 0),
     0
   );
+  const spendDifference = currentTotal - previousTotal;
   const changePercentage =
-    previousTotal > 0
-      ? ((currentTotal - previousTotal) / previousTotal) * 100
-      : currentTotal === 0
-      ? 0
-      : null;
+    previousTotal > 0 ? (Math.abs(spendDifference) / previousTotal) * 100 : null;
+  const changeLabel =
+    previousTotal === 0
+      ? currentTotal === 0
+        ? "No spend"
+        : "No prior spend"
+      : spendDifference > 0
+      ? `${changePercentage.toFixed(1)}% more`
+      : spendDifference < 0
+      ? `${changePercentage.toFixed(1)}% less`
+      : "No change";
+  const changeClass =
+    previousTotal === 0 || spendDifference === 0
+      ? "spend-overview__change--neutral"
+      : spendDifference > 0
+      ? "spend-overview__change--more"
+      : "spend-overview__change--less";
   const labelInterval = series.length <= 7 ? 1 : series.length <= 12 ? 2 : 5;
 
   return (
@@ -268,11 +284,7 @@ function SpendOverviewChart({ comparison }) {
       <div className="spend-overview__legend" aria-hidden="true">
         <span>
           <i className="spend-overview__legend-line spend-overview__legend-line--current" />
-          {currentLabel.replace(" Spend", "")}
-        </span>
-        <span>
-          <i className="spend-overview__legend-line spend-overview__legend-line--previous" />
-          {previousLabel.replace(" Spend", "")}
+          {selectedLabel.replace(" Spend", "")}
         </span>
       </div>
 
@@ -280,7 +292,7 @@ function SpendOverviewChart({ comparison }) {
         <svg
           viewBox={`0 0 ${width} ${height}`}
           role="img"
-          aria-label={`${currentLabel} compared with ${previousLabel}`}
+          aria-label={`${selectedLabel} spending trend`}
         >
           {Array.from({ length: 5 }, (_, index) => {
             const value = maximum - step * index;
@@ -308,15 +320,21 @@ function SpendOverviewChart({ comparison }) {
           })}
 
           <path
-            d={createSmoothPath(previousPoints)}
-            className="analytics-trend__line analytics-trend__line--previous"
-          />
-          <path
-            d={createSmoothPath(currentPoints)}
+            d={createSmoothPath(selectedPoints)}
             className="analytics-trend__line analytics-trend__line--current"
           />
 
-          {[...previousPoints, ...currentPoints].map((point, index) => (
+          {selectedPoints.length === 1 && selectedPoints.map((point) => (
+            <circle
+              key={`visible-${point.label}`}
+              cx={point.x}
+              cy={point.y}
+              r="4"
+              className="analytics-trend__visible-point"
+            />
+          ))}
+
+          {selectedPoints.map((point, index) => (
             <circle
               key={`${point.label}-${point.value}-${index}`}
               cx={point.x}
@@ -368,18 +386,8 @@ function SpendOverviewChart({ comparison }) {
           <span>{previousLabel}</span>
           <strong>{formatCurrency(previousTotal)}</strong>
         </div>
-        <span
-          className={`spend-overview__change ${
-            changePercentage !== null && changePercentage < 0
-              ? "spend-overview__change--down"
-              : "spend-overview__change--up"
-          }`}
-        >
-          {changePercentage === null
-            ? "No prior spend"
-            : `${changePercentage >= 0 ? "+" : ""}${changePercentage.toFixed(
-                1
-              )}%`}
+        <span className={`spend-overview__change ${changeClass}`}>
+          {changeLabel}
         </span>
       </div>
     </div>
@@ -422,7 +430,7 @@ function PaymentSplit({ cashTotal, gpayTotal }) {
 }
 
 export function ReportsAnalytics({ items = [] }) {
-  const [trendRange, setTrendRange] = useState("daily");
+  const [trendRange, setTrendRange] = useState("thisWeek");
 
   const analytics = useMemo(() => {
     const typeTotals = groupExpenses(items, (item) => item.type);
@@ -472,14 +480,18 @@ export function ReportsAnalytics({ items = [] }) {
                 onChange={(event) => setTrendRange(event.target.value)}
                 aria-label="Spend overview range"
               >
-                <option value="daily">Daily</option>
+                <option value="thisWeek">This Week</option>
+                <option value="lastWeek">Last Week</option>
                 <option value="monthly">Monthly</option>
                 <option value="lastMonth">Last Month</option>
                 <option value="yearly">Yearly</option>
               </select>
             </label>
           </div>
-          <SpendOverviewChart comparison={analytics.spendComparison} />
+          <SpendOverviewChart
+            comparison={analytics.spendComparison}
+            selectedRange={trendRange}
+          />
         </article>
 
         <article className="analytics-card analytics-card--payment">

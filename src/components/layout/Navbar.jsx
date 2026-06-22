@@ -39,7 +39,7 @@ function Navbar() {
   return (
     <header className="navbar">
       <div className="navbar__brand">
-        <h1>Rama the Mass</h1>
+        <h1>Naveen's Tracker</h1>
         <p>{user?.displayName || user?.email || "Daily spending manager"}</p>
       </div>
 

@@ -27,6 +27,10 @@ import {
   getUserDocument,
   requireUserId,
 } from "./userDataRefs";
+import {
+  applyPreparedReportStatsUpdate,
+  prepareReportStatsUpdate,
+} from "./reportStatsService";
 
 const BALANCE_MODEL_VERSION = 2;
 
@@ -238,6 +242,11 @@ export async function submitTodayExpenses({ date, draftItems }) {
   await runTransaction(db, async (transaction) => {
     const settingsSnap = await transaction.get(settingsRef);
     const dailyTotalSnap = await transaction.get(dailyTotalRef);
+    const preparedReportStats = await prepareReportStatsUpdate(
+      transaction,
+      [],
+      draftItems
+    );
 
     const settingsData = settingsSnap.exists() ? settingsSnap.data() : {};
 
@@ -360,6 +369,8 @@ export async function submitTodayExpenses({ date, draftItems }) {
         createdAt: serverTimestamp(),
       });
     }
+
+    applyPreparedReportStatsUpdate(transaction, preparedReportStats);
   });
 
   return {
@@ -380,6 +391,9 @@ export async function updateExpensesForDate({ date, items }) {
   );
 
   const existingSnapshot = await getDocs(expensesQuery);
+  const existingItems = existingSnapshot.docs.map((expenseDoc) =>
+    expenseDoc.data()
+  );
   const cleanedItems = items.map((item) => ({
     period: item.period,
     type: item.type,
@@ -404,20 +418,22 @@ export async function updateExpensesForDate({ date, items }) {
   return runTransaction(db, async (transaction) => {
     const settingsSnap = await transaction.get(settingsRef);
     const dailyTotalSnap = await transaction.get(dailyTotalRef);
+    const preparedReportStats = await prepareReportStatsUpdate(
+      transaction,
+      existingItems,
+      cleanedItems
+    );
     const walletBalances = getWalletBalances(
       settingsSnap.exists() ? settingsSnap.data() : {}
     );
 
-    const fallbackExistingItems = existingSnapshot.docs.map((expenseDoc) =>
-      expenseDoc.data()
-    );
     const dailyData = dailyTotalSnap.exists() ? dailyTotalSnap.data() : {};
     const oldCashTotal = dailyTotalSnap.exists()
       ? toNumber(dailyData.cashTotal)
-      : calculateCashTotal(fallbackExistingItems);
+      : calculateCashTotal(existingItems);
     const oldGPayTotal = dailyTotalSnap.exists()
       ? toNumber(dailyData.gpayTotal)
-      : calculateGPayTotal(fallbackExistingItems);
+      : calculateGPayTotal(existingItems);
     const oldDailyImpact = dailyTotalSnap.exists()
       ? getDailyBalanceImpact(dailyData)
       : {
@@ -529,6 +545,8 @@ export async function updateExpensesForDate({ date, items }) {
         createdAt: serverTimestamp(),
       });
     }
+
+    applyPreparedReportStatsUpdate(transaction, preparedReportStats);
 
     return {
       total: newTotal,

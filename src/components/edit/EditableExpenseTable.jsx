@@ -14,13 +14,15 @@ function EditableExpenseTable({
   onDeleteItem,
   onAddItem,
   disabled = false,
+  addBlocked = false,
+  emptyMessage = "Click Add New Item to add expense for this period.",
 }) {
   return (
     <div className="card table-card">
       <div className="card-header">
         <h3>Editable Expenses</h3>
 
-        <Button size="sm" onClick={onAddItem} disabled={disabled}>
+        <Button size="sm" onClick={onAddItem} disabled={disabled || addBlocked}>
           Add New Item
         </Button>
       </div>
@@ -37,10 +39,16 @@ function EditableExpenseTable({
         ))}
       </datalist>
 
+      {addBlocked && (
+        <div className="edit-all-periods-note">
+          To add a new item, select a specific period first.
+        </div>
+      )}
+
       {items.length === 0 ? (
         <EmptyState
-          title="No items in this period"
-          message="Click Add New Item to add expense for this period."
+          title={addBlocked ? "No expenses found" : "No items in this period"}
+          message={emptyMessage}
         />
       ) : (
         <div className="table-wrapper">

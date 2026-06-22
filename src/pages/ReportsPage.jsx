@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BalanceHistoryTable from "../components/balance/BalanceHistoryTable";
 import Loading from "../components/common/Loading";
 import DateWiseReport from "../components/reports/DateWiseReport";
@@ -13,8 +13,14 @@ import ReportSummaryCards, {
   ReportsAnalytics,
 } from "../components/reports/ReportSummaryCards";
 import TypeWiseReport from "../components/reports/TypeWiseReport";
-import { getAllBalanceHistory } from "../firebase/balanceService";
-import { getAllExpenses } from "../firebase/expenseService";
+import {
+  getAllBalanceHistoryForReport,
+  getAllExpensesForReport,
+} from "../firebase/reportQueryService";
+import {
+  getReportOverview,
+  getReportRecordCounts,
+} from "../firebase/reportStatsService";
 import {
   getCurrentMonthKey,
   getCurrentYear,
@@ -73,6 +79,13 @@ function groupMonthTotals(items) {
 function ReportsPage() {
   const [expenses, setExpenses] = useState([]);
   const [balanceHistory, setBalanceHistory] = useState([]);
+  const [overview, setOverview] = useState(null);
+  const [recordCounts, setRecordCounts] = useState({
+    expenses: 0,
+    balanceHistory: 0,
+  });
+  const [fullExpensesLoaded, setFullExpensesLoaded] = useState(false);
+  const [fullBalanceLoaded, setFullBalanceLoaded] = useState(false);
   const [filters, setFilters] = useState(defaultFilters);
   const [activeReport, setActiveReport] = useState("history");
 
@@ -85,6 +98,52 @@ function ReportsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const expenseLoadPromiseRef = useRef(null);
+  const balanceLoadPromiseRef = useRef(null);
+
+  const ensureFullExpenses = useCallback(async ({ force = false } = {}) => {
+    if (fullExpensesLoaded && !force) return expenses;
+    if (expenseLoadPromiseRef.current && !force) {
+      return expenseLoadPromiseRef.current;
+    }
+
+    const loadPromise = getAllExpensesForReport().then((items) => {
+      setExpenses(items);
+      setFullExpensesLoaded(true);
+      return items;
+    });
+    expenseLoadPromiseRef.current = loadPromise;
+
+    try {
+      return await loadPromise;
+    } finally {
+      expenseLoadPromiseRef.current = null;
+    }
+  }, [expenses, fullExpensesLoaded]);
+
+  const ensureFullBalanceHistory = useCallback(
+    async ({ force = false } = {}) => {
+      if (fullBalanceLoaded && !force) return balanceHistory;
+      if (balanceLoadPromiseRef.current && !force) {
+        return balanceLoadPromiseRef.current;
+      }
+
+      const loadPromise = getAllBalanceHistoryForReport().then((items) => {
+        setBalanceHistory(items);
+        setFullBalanceLoaded(true);
+        return items;
+      });
+      balanceLoadPromiseRef.current = loadPromise;
+
+      try {
+        return await loadPromise;
+      } finally {
+        balanceLoadPromiseRef.current = null;
+      }
+    },
+    [balanceHistory, fullBalanceLoaded]
+  );
 
   async function loadReports({ background = false } = {}) {
     try {
@@ -95,19 +154,27 @@ function ReportsPage() {
       }
       setError("");
 
-      const [expenseData, balanceHistoryData] = await Promise.all([
-        getAllExpenses(),
-        getAllBalanceHistory(),
+      const [overviewData, countData] = await Promise.all([
+        getReportOverview(),
+        getReportRecordCounts(),
       ]);
 
-      setExpenses(expenseData);
-      setBalanceHistory(balanceHistoryData);
+      setOverview(overviewData);
+      setRecordCounts(countData);
+
+      if (background && fullExpensesLoaded) {
+        await ensureFullExpenses({ force: true });
+      }
+      if (background && fullBalanceLoaded) {
+        await ensureFullBalanceHistory({ force: true });
+      }
       setLastUpdated(
         new Intl.DateTimeFormat(undefined, {
           hour: "2-digit",
           minute: "2-digit",
         }).format(new Date())
       );
+      setRefreshVersion((current) => current + 1);
     } catch (err) {
       console.error(err);
       setError("Failed to load reports");
@@ -188,60 +255,124 @@ function ReportsPage() {
     ).length;
   }, [activeReport, filters]);
 
+  useEffect(() => {
+    const reportNeedsDetailedExpenses = [
+      "date",
+      "month",
+      "item",
+      "export",
+    ].includes(activeReport);
+    const needsExpenses =
+      reportNeedsDetailedExpenses || showAnalytics || activeFilterCount > 0;
+
+    if (!needsExpenses) return;
+
+    ensureFullExpenses().catch((loadError) => {
+      console.error(loadError);
+      setError("Unable to load the complete report dataset.");
+    });
+
+    if (activeReport === "export") {
+      ensureFullBalanceHistory().catch((loadError) => {
+        console.error(loadError);
+        setError("Unable to load the complete backup dataset.");
+      });
+    }
+  }, [
+    activeFilterCount,
+    activeReport,
+    ensureFullBalanceHistory,
+    ensureFullExpenses,
+    showAnalytics,
+  ]);
+
   const todayDate = getTodayDate();
   const currentMonth = getCurrentMonthKey();
   const currentYear = getCurrentYear();
 
   const lifetimeTotal = useMemo(
-    () => calculateTotal(filteredExpenses),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? calculateTotal(filteredExpenses)
+        : toNumber(overview?.lifetimeTotal),
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const lifetimeCashTotal = useMemo(
-    () => calculateCashTotal(filteredExpenses),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? calculateCashTotal(filteredExpenses)
+        : toNumber(overview?.lifetimeCashTotal),
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const lifetimeGPayTotal = useMemo(
-    () => calculateGPayTotal(filteredExpenses),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? calculateGPayTotal(filteredExpenses)
+        : toNumber(overview?.lifetimeGPayTotal),
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const todayTotal = useMemo(
     () =>
-      calculateTotal(filteredExpenses.filter((item) => item.date === todayDate)),
-    [filteredExpenses, todayDate]
+      fullExpensesLoaded
+        ? calculateTotal(
+            filteredExpenses.filter((item) => item.date === todayDate)
+          )
+        : toNumber(overview?.todayTotal),
+    [filteredExpenses, fullExpensesLoaded, overview, todayDate]
   );
 
   const monthTotal = useMemo(
     () =>
-      calculateTotal(
-        filteredExpenses.filter((item) => isSameMonth(item.date, currentMonth))
-      ),
-    [filteredExpenses, currentMonth]
+      fullExpensesLoaded
+        ? calculateTotal(
+            filteredExpenses.filter((item) =>
+              isSameMonth(item.date, currentMonth)
+            )
+          )
+        : toNumber(overview?.monthTotal),
+    [filteredExpenses, currentMonth, fullExpensesLoaded, overview]
   );
 
   const yearTotal = useMemo(
     () =>
-      calculateTotal(
-        filteredExpenses.filter((item) => isSameYear(item.date, currentYear))
-      ),
-    [filteredExpenses, currentYear]
+      fullExpensesLoaded
+        ? calculateTotal(
+            filteredExpenses.filter((item) =>
+              isSameYear(item.date, currentYear)
+            )
+          )
+        : toNumber(overview?.yearTotal),
+    [filteredExpenses, currentYear, fullExpensesLoaded, overview]
   );
 
   const typeTotals = useMemo(
-    () => groupTotalByKey(filteredExpenses, "type"),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? groupTotalByKey(filteredExpenses, "type")
+        : overview?.typeTotals || {},
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const periodTotals = useMemo(
-    () => groupTotalByKey(filteredExpenses, "period"),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? groupTotalByKey(filteredExpenses, "period")
+        : overview?.periodTotals || {},
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const paymentTotals = useMemo(
-    () => groupTotalByKey(filteredExpenses, "paymentType"),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? groupTotalByKey(filteredExpenses, "paymentType")
+        : {
+            cash: toNumber(overview?.lifetimeCashTotal),
+            gpay: toNumber(overview?.lifetimeGPayTotal),
+          },
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const dateTotals = useMemo(
@@ -260,28 +391,57 @@ function ReportsPage() {
   );
 
   const mostSpentDay = useMemo(
-    () => getMostSpentDay(filteredExpenses),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? getMostSpentDay(filteredExpenses)
+        : overview?.mostSpentDay,
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   const mostUsedItem = useMemo(
-    () => getMostUsedItem(filteredExpenses),
-    [filteredExpenses]
+    () =>
+      fullExpensesLoaded
+        ? getMostUsedItem(filteredExpenses)
+        : overview?.mostUsedItem,
+    [filteredExpenses, fullExpensesLoaded, overview]
   );
 
   function renderActiveReport() {
+    const requiresDetailedExpenses =
+      ["date", "month", "item", "export"].includes(activeReport) ||
+      activeFilterCount > 0;
+
+    if (requiresDetailedExpenses && !fullExpensesLoaded) {
+      return <Loading message="Loading complete report data..." />;
+    }
+
     if (activeReport === "type") return <TypeWiseReport data={typeTotals} />;
     if (activeReport === "payment") return <PaymentWiseReport data={paymentTotals} />;
     if (activeReport === "period") return <PeriodWiseReport data={periodTotals} />;
     if (activeReport === "date") return <DateWiseReport data={dateTotals} title="Date-wise Total" />;
     if (activeReport === "month") return <DateWiseReport data={monthTotals} title="Month-wise Total" />;
     if (activeReport === "item") return <ItemWiseReport data={itemTotals} />;
-    if (activeReport === "history") return <FullHistoryTable items={filteredExpenses} />;
+    if (activeReport === "history") {
+      return (
+        <FullHistoryTable
+          filters={filters}
+          refreshKey={refreshVersion}
+          onOpenFilters={() => setIsMobileFilterOpen(true)}
+          activeFilterCount={activeFilterCount}
+        />
+      );
+    }
     if (activeReport === "balance") {
-      return <BalanceHistoryTable items={balanceHistory} filters={filters} />;
+      return (
+        <BalanceHistoryTable filters={filters} refreshKey={refreshVersion} />
+      );
     }
 
     if (activeReport === "export") {
+      if (!fullBalanceLoaded) {
+        return <Loading message="Preparing complete backup data..." />;
+      }
+
       return (
         <ExportButtons
           expenses={filteredExpenses}
@@ -290,7 +450,14 @@ function ReportsPage() {
       );
     }
 
-    return <FullHistoryTable items={filteredExpenses} />;
+    return (
+      <FullHistoryTable
+        filters={filters}
+        refreshKey={refreshVersion}
+        onOpenFilters={() => setIsMobileFilterOpen(true)}
+        activeFilterCount={activeFilterCount}
+      />
+    );
   }
 
   if (loading) {
@@ -308,10 +475,10 @@ function ReportsPage() {
 
           <div className="reports-workspace-meta">
             <span>
-              <strong>{filteredExpenses.length}</strong> expense records
+              <strong>{recordCounts.expenses}</strong> expense records
             </span>
             <span>
-              <strong>{balanceHistory.length}</strong> balance events
+              <strong>{recordCounts.balanceHistory}</strong> balance events
             </span>
             {lastUpdated && <span>Updated {lastUpdated}</span>}
           </div>
@@ -399,7 +566,12 @@ function ReportsPage() {
             />
           </div>
 
-          {showAnalytics && <ReportsAnalytics items={analyticsExpenses} />}
+          {showAnalytics &&
+            (fullExpensesLoaded ? (
+              <ReportsAnalytics items={analyticsExpenses} />
+            ) : (
+              <Loading message="Loading analytics data..." />
+            ))}
 
           <div className="reports-dynamic-area">{renderActiveReport()}</div>
         </div>

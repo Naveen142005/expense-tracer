@@ -4,6 +4,11 @@ import EmptyState from "../common/EmptyState";
 import TablePagination from "../common/TablePagination";
 import { formatDisplayDate, isDateInRange } from "../../utils/dateUtils";
 import { formatCurrency, toNumber } from "../../utils/totalUtils";
+import {
+  getAllBalanceHistoryForReport,
+  getBalanceHistoryCount,
+  getBalanceHistoryPage,
+} from "../../firebase/reportQueryService";
 
 const BALANCE_HISTORY_COLUMNS = [
   { label: "S.No", key: "index" },
@@ -107,7 +112,7 @@ function SortIcon({ active, direction }) {
   );
 }
 
-function BalanceHistoryTable({ items = [], filters = {} }) {
+function BalanceHistoryTable({ filters = {}, refreshKey = 0 }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState(null);
   const [sortConfig, setSortConfig] = useState({
@@ -116,6 +121,75 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [serverItems, setServerItems] = useState([]);
+  const [fallbackItems, setFallbackItems] = useState([]);
+  const [serverTotalItems, setServerTotalItems] = useState(0);
+  const [firstDocument, setFirstDocument] = useState(null);
+  const [lastDocument, setLastDocument] = useState(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
+
+  const usesServerPagination =
+    !searchQuery.trim() &&
+    sortConfig.key === "index" &&
+    sortConfig.direction === "asc";
+  const queryFilters = useMemo(
+    () => ({
+      startDate: filters.startDate || "",
+      endDate: filters.endDate || "",
+      paymentType: filters.paymentType || "all",
+    }),
+    [filters.endDate, filters.paymentType, filters.startDate]
+  );
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialData() {
+      try {
+        setCurrentPage(1);
+        setDataLoading(true);
+        setDataError("");
+
+        if (usesServerPagination) {
+          const [totalItems, page] = await Promise.all([
+            getBalanceHistoryCount(queryFilters),
+            getBalanceHistoryPage({
+              filters: queryFilters,
+              pageSize: rowsPerPage,
+            }),
+          ]);
+
+          if (cancelled) return;
+          setServerItems(page.items);
+          setServerTotalItems(totalItems);
+          setFirstDocument(page.firstDocument);
+          setLastDocument(page.lastDocument);
+          setFallbackItems([]);
+        } else {
+          const allItems = await getAllBalanceHistoryForReport(queryFilters);
+          if (cancelled) return;
+          setFallbackItems(allItems);
+          setServerItems([]);
+          setServerTotalItems(allItems.length);
+          setFirstDocument(null);
+          setLastDocument(null);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error(error);
+        setDataError("Unable to load balance history.");
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    }
+
+    loadInitialData();
+    return () => {
+      cancelled = true;
+    };
+  }, [queryFilters, rowsPerPage, usesServerPagination, refreshKey]);
+
+  const items = usesServerPagination ? serverItems : fallbackItems;
 
   const filteredAndSortedItems = useMemo(() => {
     const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -183,13 +257,15 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
     sortConfig,
   ]);
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredAndSortedItems.length / rowsPerPage)
-  );
+  const totalItems = usesServerPagination
+    ? serverTotalItems
+    : filteredAndSortedItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / rowsPerPage));
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
-  const paginatedItems = filteredAndSortedItems.slice(startIndex, endIndex);
+  const paginatedItems = usesServerPagination
+    ? filteredAndSortedItems
+    : filteredAndSortedItems.slice(startIndex, endIndex);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -215,6 +291,49 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
       direction:
         previous.key === key && previous.direction === "asc" ? "desc" : "asc",
     }));
+  }
+
+  async function handlePageChange(targetPage) {
+    if (!usesServerPagination) {
+      setCurrentPage(targetPage);
+      return;
+    }
+
+    if (targetPage === currentPage || targetPage < 1 || targetPage > totalPages) {
+      return;
+    }
+
+    const direction =
+      targetPage === 1
+        ? "first"
+        : targetPage === totalPages
+        ? "last"
+        : targetPage > currentPage
+        ? "next"
+        : "previous";
+    const lastPageSize = serverTotalItems % rowsPerPage || rowsPerPage;
+
+    try {
+      setDataLoading(true);
+      setDataError("");
+      const page = await getBalanceHistoryPage({
+        filters: queryFilters,
+        pageSize: direction === "last" ? lastPageSize : rowsPerPage,
+        direction,
+        firstDocument,
+        lastDocument,
+      });
+
+      setServerItems(page.items);
+      setFirstDocument(page.firstDocument);
+      setLastDocument(page.lastDocument);
+      setCurrentPage(targetPage);
+    } catch (error) {
+      console.error(error);
+      setDataError("Unable to load this balance-history page.");
+    } finally {
+      setDataLoading(false);
+    }
   }
 
   function renderCell(item, columnKey, index) {
@@ -258,7 +377,11 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
         />
       </div>
 
-      {items.length === 0 ? (
+      {dataError && <div className="error-box">{dataError}</div>}
+
+      {dataLoading && items.length === 0 ? (
+        <div className="table-loading-state">Loading balance history...</div>
+      ) : totalItems === 0 ? (
         <EmptyState
           title="No balance history"
           message="Cash and GPay balance history will appear here."
@@ -388,10 +511,10 @@ function BalanceHistoryTable({ items = [], filters = {} }) {
             currentPage={currentPage}
             totalPages={totalPages}
             rowsPerPage={rowsPerPage}
-            totalItems={filteredAndSortedItems.length}
+            totalItems={totalItems}
             startIndex={startIndex}
             endIndex={endIndex}
-            onPageChange={setCurrentPage}
+            onPageChange={handlePageChange}
             onRowsPerPageChange={setRowsPerPage}
           />
         </>

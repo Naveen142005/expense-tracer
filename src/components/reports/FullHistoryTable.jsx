@@ -4,7 +4,12 @@ import EmptyState from "../common/EmptyState";
 import TablePagination from "../common/TablePagination";
 import { EXPENSE_TYPES, PERIODS } from "../../utils/constants";
 import { formatDisplayDate } from "../../utils/dateUtils";
-import { formatCurrency, toNumber } from "../../utils/totalUtils";
+import { calculateTotal, formatCurrency, toNumber } from "../../utils/totalUtils";
+import {
+  getAllExpensesForReport,
+  getExpenseHistoryMetrics,
+  getExpenseHistoryPage,
+} from "../../firebase/reportQueryService";
 
 function getItemName(item) {
   return item.name || item.description || "-";
@@ -82,7 +87,12 @@ function SortIcon({ active, direction }) {
   );
 }
 
-function FullHistoryTable({ items = [] }) {
+function FullHistoryTable({
+  filters = {},
+  refreshKey = 0,
+  onOpenFilters,
+  activeFilterCount = 0,
+}) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -94,6 +104,106 @@ function FullHistoryTable({ items = [] }) {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [serverItems, setServerItems] = useState([]);
+  const [fallbackItems, setFallbackItems] = useState([]);
+  const [serverTotalItems, setServerTotalItems] = useState(0);
+  const [serverFilteredTotal, setServerFilteredTotal] = useState(0);
+  const [firstDocument, setFirstDocument] = useState(null);
+  const [lastDocument, setLastDocument] = useState(null);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [dataError, setDataError] = useState("");
+
+  const usesServerPagination =
+    !searchQuery.trim() &&
+    sortConfig.key === "index" &&
+    sortConfig.direction === "asc";
+
+  const queryState = useMemo(() => {
+    const globalType = filters.type || "all";
+    const globalPeriod = filters.period || "all";
+    const typeConflict =
+      globalType !== "all" &&
+      typeFilter !== "all" &&
+      globalType !== typeFilter;
+    const periodConflict =
+      globalPeriod !== "all" &&
+      periodFilter !== "all" &&
+      globalPeriod !== periodFilter;
+
+    return {
+      impossible: typeConflict || periodConflict,
+      filters: {
+        startDate: filters.startDate || "",
+        endDate: filters.endDate || "",
+        paymentType: filters.paymentType || "all",
+        type: typeFilter !== "all" ? typeFilter : globalType,
+        period: periodFilter !== "all" ? periodFilter : globalPeriod,
+      },
+    };
+  }, [filters, periodFilter, typeFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialData() {
+      setCurrentPage(1);
+      setDataError("");
+
+      if (queryState.impossible) {
+        setServerItems([]);
+        setFallbackItems([]);
+        setServerTotalItems(0);
+        setServerFilteredTotal(0);
+        setFirstDocument(null);
+        setLastDocument(null);
+        setDataLoading(false);
+        return;
+      }
+
+      try {
+        setDataLoading(true);
+
+        if (usesServerPagination) {
+          const [metrics, page] = await Promise.all([
+            getExpenseHistoryMetrics(queryState.filters),
+            getExpenseHistoryPage({
+              filters: queryState.filters,
+              pageSize: rowsPerPage,
+            }),
+          ]);
+
+          if (cancelled) return;
+          setServerItems(page.items);
+          setServerTotalItems(metrics.totalItems);
+          setServerFilteredTotal(metrics.filteredTotal);
+          setFirstDocument(page.firstDocument);
+          setLastDocument(page.lastDocument);
+          setFallbackItems([]);
+        } else {
+          const allItems = await getAllExpensesForReport(queryState.filters);
+          if (cancelled) return;
+          setFallbackItems(allItems);
+          setServerItems([]);
+          setServerTotalItems(allItems.length);
+          setFirstDocument(null);
+          setLastDocument(null);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error(error);
+        setDataError("Unable to load expense history.");
+      } finally {
+        if (!cancelled) setDataLoading(false);
+      }
+    }
+
+    loadInitialData();
+    return () => {
+      cancelled = true;
+    };
+  }, [queryState, rowsPerPage, usesServerPagination, refreshKey]);
+
+  const items = usesServerPagination ? serverItems : fallbackItems;
 
   const visibleColumns = useMemo(() => {
     const columns = [
@@ -188,9 +298,21 @@ function FullHistoryTable({ items = [] }) {
     });
   }, [items, periodFilter, typeFilter, searchQuery, sortConfig]);
 
+  const filteredTotal = useMemo(
+    () =>
+      usesServerPagination
+        ? serverFilteredTotal
+        : calculateTotal(filteredAndSortedItems),
+    [filteredAndSortedItems, serverFilteredTotal, usesServerPagination]
+  );
+
+  const totalItems = usesServerPagination
+    ? serverTotalItems
+    : filteredAndSortedItems.length;
+
   const totalPages = Math.max(
     1,
-    Math.ceil(filteredAndSortedItems.length / rowsPerPage)
+    Math.ceil(totalItems / rowsPerPage)
   );
 
   useEffect(() => {
@@ -212,7 +334,52 @@ function FullHistoryTable({ items = [] }) {
 
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
-  const paginatedItems = filteredAndSortedItems.slice(startIndex, endIndex);
+  const paginatedItems = usesServerPagination
+    ? filteredAndSortedItems
+    : filteredAndSortedItems.slice(startIndex, endIndex);
+
+  async function handlePageChange(targetPage) {
+    if (!usesServerPagination) {
+      setCurrentPage(targetPage);
+      return;
+    }
+
+    if (targetPage === currentPage || targetPage < 1 || targetPage > totalPages) {
+      return;
+    }
+
+    const direction =
+      targetPage === 1
+        ? "first"
+        : targetPage === totalPages
+        ? "last"
+        : targetPage > currentPage
+        ? "next"
+        : "previous";
+    const lastPageSize = serverTotalItems % rowsPerPage || rowsPerPage;
+
+    try {
+      setDataLoading(true);
+      setDataError("");
+      const page = await getExpenseHistoryPage({
+        filters: queryState.filters,
+        pageSize: direction === "last" ? lastPageSize : rowsPerPage,
+        direction,
+        firstDocument,
+        lastDocument,
+      });
+
+      setServerItems(page.items);
+      setFirstDocument(page.firstDocument);
+      setLastDocument(page.lastDocument);
+      setCurrentPage(targetPage);
+    } catch (error) {
+      console.error(error);
+      setDataError("Unable to load this expense page.");
+    } finally {
+      setDataLoading(false);
+    }
+  }
 
   function handleSort(key) {
     setSortConfig((prev) => {
@@ -271,6 +438,19 @@ function FullHistoryTable({ items = [] }) {
               </option>
             ))}
           </select>
+
+          {onOpenFilters && (
+            <button
+              type="button"
+              className="history-filter-btn"
+              onClick={onOpenFilters}
+            >
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="reports-filter-count">{activeFilterCount}</span>
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -284,7 +464,11 @@ function FullHistoryTable({ items = [] }) {
         />
       </div>
 
-      {items.length === 0 ? (
+      {dataError && <div className="error-box">{dataError}</div>}
+
+      {dataLoading && items.length === 0 ? (
+        <div className="table-loading-state">Loading expense history...</div>
+      ) : totalItems === 0 ? (
         <EmptyState title="No expenses found" message="No data available." />
       ) : filteredAndSortedItems.length === 0 ? (
         <EmptyState
@@ -407,14 +591,19 @@ function FullHistoryTable({ items = [] }) {
             </table>
           </div>
 
+          <div className="history-table-total">
+            <span>Filtered Total</span>
+            <strong>{formatCurrency(filteredTotal)}</strong>
+          </div>
+
           <TablePagination
             currentPage={currentPage}
             totalPages={totalPages}
             rowsPerPage={rowsPerPage}
-            totalItems={filteredAndSortedItems.length}
+            totalItems={totalItems}
             startIndex={startIndex}
             endIndex={endIndex}
-            onPageChange={setCurrentPage}
+            onPageChange={handlePageChange}
             onRowsPerPageChange={setRowsPerPage}
           />
         </>

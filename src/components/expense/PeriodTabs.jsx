@@ -1,9 +1,13 @@
 import { PERIODS } from "../../utils/constants";
 
-function PeriodTabs({ activePeriod, onChange, disabled = false }) {
+function PeriodTabs({ activePeriod, onChange, disabled = false, includeAll = false }) {
+  const periodOptions = includeAll
+    ? [{ label: "All Periods", value: "all" }, ...PERIODS]
+    : PERIODS;
+
   return (
     <div className="period-tabs">
-      {PERIODS.map((period) => (
+      {periodOptions.map((period) => (
         <button
           key={period.value}
           type="button"
