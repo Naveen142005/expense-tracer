@@ -6197,7 +6197,7 @@ table th.table-cell--description .table-sort-btn {
 
 .app-workspace .page-heading {
   position: relative;
-  align-items: center;
+
   min-height: 92px;
   margin: 0 0 16px;
   padding: 20px 22px 20px 26px;
@@ -7363,7 +7363,7 @@ table th.table-cell--description .table-sort-btn {
   color: var(--reports-text);
   padding: 0 16px;
   font: inherit;
-  font-weight: 800;
+  font-weight: 600;
   cursor: pointer;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }

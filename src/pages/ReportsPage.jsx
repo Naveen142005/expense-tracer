@@ -507,16 +507,7 @@ function ReportsPage() {
             {showMobileCards ? "Hide Summary" : "Show Summary"}
           </button>
 
-          <button
-            type="button"
-            className="reports-action-btn reports-filter-trigger"
-            onClick={() => setIsMobileFilterOpen(true)}
-          >
-            Filters
-            {activeFilterCount > 0 && (
-              <span className="reports-filter-count">{activeFilterCount}</span>
-            )}
-          </button>
+          
 
           <button
             type="button"
