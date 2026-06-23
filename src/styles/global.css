@@ -7453,3 +7453,20 @@ table th.table-cell--description .table-sort-btn {
 .card-header { 
   margin-bottom: 12px;
 }
+@media (max-width: 700px) {
+  .reports-workspace-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    width: 100% !important;
+  }
+
+  .reports-workspace-actions .reports-action-btn {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .reports-workspace-actions .reports-action-btn--primary {
+    grid-column: 1 / -1 !important;
+  }
+}
