@@ -3,6 +3,11 @@ import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 
 const TIME_ZONE = "Asia/Kolkata";
+const REQUIRED_PERIODS = ["morning", "afternoon", "night"];
+
+function formatPeriod(period) {
+  return `${period.charAt(0).toUpperCase()}${period.slice(1)}`;
+}
 
 function getRequiredEnvironmentValue(name) {
   const value = process.env[name]?.trim();
@@ -51,12 +56,13 @@ function isAuthorized(request) {
   );
 }
 
-async function sendReminderEmail({ email, name, date }) {
+async function sendReminderEmail({ email, name, date, missingPeriods }) {
   const apiKey = getRequiredEnvironmentValue("RESEND_API_KEY");
   const from =
     process.env.REMINDER_FROM_EMAIL?.trim() ||
     "Naveen's Tracker <onboarding@resend.dev>";
   const displayName = name?.trim() || "there";
+  const missingPeriodText = missingPeriods.map(formatPeriod).join(", ");
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -67,14 +73,14 @@ async function sendReminderEmail({ email, name, date }) {
     body: JSON.stringify({
       from,
       to: [email],
-      subject: "Expense reminder: no entry submitted today",
-      text: `Hi ${displayName}, no expense entry has been submitted for ${date}. Open Naveen's Tracker and add today's expenses.`,
+      subject: "Expense reminder: some periods are missing",
+      text: `Hi ${displayName}, expense entries are still missing for ${missingPeriodText} on ${date}. Open Naveen's Tracker and add the missing entries.`,
       html: `
         <div style="font-family:Arial,sans-serif;line-height:1.6;color:#172033">
           <h2 style="margin:0 0 12px">Daily expense reminder</h2>
           <p>Hi ${displayName},</p>
-          <p>No expense entry has been submitted for <strong>${date}</strong>.</p>
-          <p>Open Naveen's Tracker and add today's expenses.</p>
+          <p>Expense entries are still missing for <strong>${missingPeriodText}</strong> on <strong>${date}</strong>.</p>
+          <p>Open Naveen's Tracker and add the missing entries.</p>
         </div>
       `,
     }),
@@ -108,19 +114,30 @@ export async function GET(request) {
 
     const date = getDateInTimeZone();
     const userRef = db.doc(`users/${user.uid}`);
-    const dailyTotalRef = userRef.collection("dailyTotals").doc(date);
+    const expensesQuery = userRef.collection("expenses").where("date", "==", date);
     const reminderRef = userRef.collection("emailReminders").doc(date);
-    const claim = await db.runTransaction(async (transaction) => {
-      const [dailyTotalSnapshot, reminderSnapshot] = await Promise.all([
-        transaction.get(dailyTotalRef),
-        transaction.get(reminderRef),
-      ]);
-      const total = Number(dailyTotalSnapshot.data()?.total || 0);
-      const reminderStatus = reminderSnapshot.data()?.status;
+    const expensesSnapshot = await expensesQuery.get();
+    const submittedPeriods = new Set(
+      expensesSnapshot.docs
+        .map((expenseDoc) => String(expenseDoc.data()?.period || "").toLowerCase())
+        .filter(Boolean)
+    );
+    const missingPeriods = REQUIRED_PERIODS.filter(
+      (period) => !submittedPeriods.has(period)
+    );
 
-      if (total > 0) {
-        return { claimed: false, reason: "Expenses already submitted" };
-      }
+    if (missingPeriods.length === 0) {
+      return Response.json({
+        success: true,
+        sent: false,
+        reason: "All required periods submitted",
+        date,
+      });
+    }
+
+    const claim = await db.runTransaction(async (transaction) => {
+      const reminderSnapshot = await transaction.get(reminderRef);
+      const reminderStatus = reminderSnapshot.data()?.status;
 
       if (reminderStatus === "sent" || reminderStatus === "processing") {
         return { claimed: false, reason: "Reminder already sent or processing" };
@@ -131,6 +148,7 @@ export async function GET(request) {
         {
           date,
           status: "processing",
+          missingPeriods,
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -155,12 +173,14 @@ export async function GET(request) {
         email: recipientEmail,
         name: user.displayName,
         date,
+        missingPeriods,
       });
 
       await reminderRef.set(
         {
           date,
           status: "sent",
+          missingPeriods,
           emailId: emailResult.id || "",
           sentAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),

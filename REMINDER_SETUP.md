@@ -65,6 +65,6 @@ curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
 
 Expected results:
 
-- No expense today: `sent` is `true` and one email is delivered.
-- Expense exists today: `sent` is `false` with `Expenses already submitted`.
+- One or more required periods are missing: `sent` is `true` and one email lists them.
+- Morning, Afternoon, and Night all exist: `sent` is `false`.
 - Already reminded today: `sent` is `false` with `Reminder already sent`.
