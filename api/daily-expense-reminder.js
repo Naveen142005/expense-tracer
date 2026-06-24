@@ -73,16 +73,57 @@ async function sendReminderEmail({ email, name, date, missingPeriods }) {
     body: JSON.stringify({
       from,
       to: [email],
-      subject: "Expense reminder: some periods are missing",
-      text: `Hi ${displayName}, expense entries are still missing for ${missingPeriodText} on ${date}. Open Naveen's Tracker and add the missing entries.`,
+      subject: "Action required: expense entries are incomplete",
+      text: `Hi ${displayName}, expense entries are still missing for ${missingPeriodText} on ${date}. Open Naveen's Tracker: https://expense-tracer-seven.vercel.app/`,
       html: `
-        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#172033">
-          <h2 style="margin:0 0 12px">Daily expense reminder</h2>
-          <p>Hi ${displayName},</p>
-          <p>Expense entries are still missing for <strong>${missingPeriodText}</strong> on <strong>${date}</strong>.</p>
-          <p>Open Naveen's Tracker and add the missing entries.</p>
-        </div>
-      `,
+    <div style="margin:0;padding:32px 16px;background:#f4f7fb;font-family:Arial,sans-serif;color:#172033;">
+      <table role="presentation" style="width:100%;max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #dfe5ee;border-radius:10px;border-collapse:separate;">
+        <tr>
+          <td style="padding:28px 32px 20px;background:#172033;border-radius:10px 10px 0 0;">
+            <p style="margin:0 0 6px;color:#8db7ff;font-size:12px;font-weight:700;text-transform:uppercase;">
+              Naveen's Tracker
+            </p>
+            <h1 style="margin:0;color:#ffffff;font-size:22px;">
+              Daily expense reminder
+            </h1>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:28px 32px;">
+            <p style="margin:0 0 16px;font-size:16px;">
+              Hi ${displayName},
+            </p>
+
+            <p style="margin:0 0 18px;color:#526078;font-size:15px;line-height:1.7;">
+              Your expense entries for the following periods are still missing:
+            </p>
+
+            <div style="margin:0 0 22px;padding:14px 16px;background:#eef5ff;border-left:4px solid #2563eb;border-radius:6px;">
+              <strong style="color:#174ea6;">${missingPeriodText}</strong>
+              <span style="display:block;margin-top:5px;color:#64748b;font-size:13px;">
+                Date: ${date}
+              </span>
+            </div>
+
+            <a
+              href="https://expense-tracer-seven.vercel.app/"
+              target="_blank"
+              style="display:inline-block;padding:12px 20px;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;border-radius:6px;"
+            >
+              Open Expense Tracker
+            </a>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:18px 32px;border-top:1px solid #e5eaf1;color:#7a8699;font-size:12px;line-height:1.5;">
+            This is an automatic reminder from Naveen's Tracker.
+          </td>
+        </tr>
+      </table>
+    </div>
+  `,
     }),
   });
 
