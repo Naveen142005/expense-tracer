@@ -74,14 +74,14 @@ function getSpendComparison(items, range) {
   if (range === "yearly") {
     const currentYear = today.getFullYear();
     const previousYear = currentYear - 1;
+    const currentMonthIndex = today.getMonth();
     const series = MONTH_LABELS.map((label, index) => {
       const month = String(index + 1).padStart(2, "0");
+      const isFutureMonth = index > currentMonthIndex;
 
       return {
         label,
-        current: index <= today.getMonth()
-          ? monthlyTotals[`${currentYear}-${month}`] || 0
-          : null,
+        current: isFutureMonth ? null : monthlyTotals[`${currentYear}-${month}`] || 0,
         previous: monthlyTotals[`${previousYear}-${month}`] || 0,
       };
     });
@@ -132,14 +132,19 @@ function getSpendComparison(items, range) {
   const series = Array.from({ length }, (_, index) => {
     const currentDate = addDays(currentStart, index);
     const previousDate = addDays(previousStart, index);
-    const currentExists = index < currentDays && currentDate <= today;
+    const currentExists = index < currentDays;
     const previousExists = index < previousDays;
+
+    const isFutureCurrentDate = currentDate > today;
 
     return {
       label: isWeekly
         ? formatShortDate(range === "lastWeek" ? previousDate : currentDate)
         : String(index + 1),
-      current: currentExists ? dailyTotals[toDateKey(currentDate)] || 0 : null,
+      current:
+        currentExists && !isFutureCurrentDate
+          ? dailyTotals[toDateKey(currentDate)] || 0
+          : null,
       previous: previousExists ? dailyTotals[toDateKey(previousDate)] || 0 : null,
     };
   });
@@ -191,6 +196,55 @@ function createSmoothPath(points) {
   }, `M ${points[0].x} ${points[0].y}`);
 }
 
+
+function formatDateKeyLabel(value = "") {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value || "Unknown";
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+  }).format(new Date(year, month - 1, day));
+}
+
+function parseDateKey(value = "") {
+  const [year, month, day] = String(value).split("-").map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day);
+}
+
+function getEndDateForRecentSeries(dailyMap) {
+  const dateKeys = Object.keys(dailyMap).filter(Boolean).sort();
+  const latestExpenseDate = parseDateKey(dateKeys[dateKeys.length - 1]);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  if (!latestExpenseDate) return today;
+  return latestExpenseDate > today ? latestExpenseDate : today;
+}
+
+function buildContinuousDailySeries(dailyMap, length = 10) {
+  const endDate = getEndDateForRecentSeries(dailyMap);
+  const startDate = addDays(endDate, -(length - 1));
+
+  return Array.from({ length }, (_, index) => {
+    const date = addDays(startDate, index);
+    const dateKey = toDateKey(date);
+    const summary = dailyMap[dateKey] || { value: 0, count: 0 };
+
+    return {
+      dateKey,
+      label: formatDateKeyLabel(dateKey),
+      value: summary.value || 0,
+      count: summary.count || 0,
+    };
+  });
+}
+
+function getTiltProps() {
+  return {};
+}
+
 function HorizontalBars({ items, emptyMessage }) {
   if (items.length === 0) {
     return <div className="analytics-empty">{emptyMessage}</div>;
@@ -218,12 +272,13 @@ function HorizontalBars({ items, emptyMessage }) {
 
 function SpendOverviewChart({ comparison, selectedRange }) {
   const { series, currentLabel, previousLabel } = comparison;
-  const width = 820;
-  const height = 390;
-  const left = 56;
-  const right = 18;
+  const [activePoint, setActivePoint] = useState(null);
+  const width = 620;
+  const height = 340;
+  const left = 48;
+  const right = 14;
   const top = 18;
-  const bottom = 42;
+  const bottom = 40;
   const chartWidth = width - left - right;
   const chartHeight = height - top - bottom;
   const divisor = Math.max(series.length - 1, 1);
@@ -250,6 +305,13 @@ function SpendOverviewChart({ comparison, selectedRange }) {
   const selectedPoints = series
     .map((item, index) => toPoint(item, index, selectedKey))
     .filter(Boolean);
+  const firstPoint = selectedPoints[0];
+  const lastPoint = selectedPoints[selectedPoints.length - 1];
+  const baselineY = top + chartHeight;
+  const areaPath =
+    selectedPoints.length > 1
+      ? `${createSmoothPath(selectedPoints)} L ${lastPoint.x} ${baselineY} L ${firstPoint.x} ${baselineY} Z`
+      : "";
   const currentTotal = series.reduce(
     (total, item) => total + (item.current || 0),
     0
@@ -277,7 +339,7 @@ function SpendOverviewChart({ comparison, selectedRange }) {
       : spendDifference > 0
       ? "spend-overview__change--more"
       : "spend-overview__change--less";
-  const labelInterval = series.length <= 7 ? 1 : series.length <= 12 ? 2 : 5;
+  const labelInterval = series.length <= 10 ? 1 : series.length <= 16 ? 2 : 5;
 
   return (
     <div className="spend-overview">
@@ -293,7 +355,14 @@ function SpendOverviewChart({ comparison, selectedRange }) {
           viewBox={`0 0 ${width} ${height}`}
           role="img"
           aria-label={`${selectedLabel} spending trend`}
+          onMouseLeave={() => setActivePoint(null)}
         >
+          <defs>
+            <linearGradient id="spendOverviewArea" x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" className="analytics-trend__area-stop analytics-trend__area-stop--top" />
+              <stop offset="100%" className="analytics-trend__area-stop analytics-trend__area-stop--bottom" />
+            </linearGradient>
+          </defs>
           {Array.from({ length: 5 }, (_, index) => {
             const value = maximum - step * index;
             const y = top + (index / 4) * chartHeight;
@@ -313,11 +382,18 @@ function SpendOverviewChart({ comparison, selectedRange }) {
                   textAnchor="end"
                   className="analytics-trend__label analytics-trend__label--axis"
                 >
-                  {formatAxisValue(value)}
+                  ₹{formatAxisValue(value)}
                 </text>
               </g>
             );
           })}
+
+          {areaPath && (
+            <path
+              d={areaPath}
+              className="analytics-trend__area analytics-trend__area--current"
+            />
+          )}
 
           <path
             d={createSmoothPath(selectedPoints)}
@@ -339,14 +415,58 @@ function SpendOverviewChart({ comparison, selectedRange }) {
               key={`${point.label}-${point.value}-${index}`}
               cx={point.x}
               cy={point.y}
-              r="9"
+              r="12"
               className="analytics-trend__hit-area"
-            >
-              <title>
-                {point.label}: {formatCurrency(point.value)}
-              </title>
-            </circle>
+              onMouseEnter={() => setActivePoint(point)}
+              onFocus={() => setActivePoint(point)}
+              tabIndex="0"
+              aria-label={`${point.label}: ${formatCurrency(point.value)}`}
+            />
           ))}
+
+          {activePoint && (
+            <g className="analytics-trend__active-layer" aria-hidden="true">
+              <line
+                x1={activePoint.x}
+                y1={top}
+                x2={activePoint.x}
+                y2={baselineY}
+                className="analytics-trend__crosshair"
+              />
+              <circle
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r="5"
+                className="analytics-trend__active-dot"
+              />
+              {(() => {
+                const tooltipWidth = 126;
+                const tooltipHeight = 48;
+                const tooltipX = Math.min(
+                  Math.max(activePoint.x - tooltipWidth / 2, left + 8),
+                  width - right - tooltipWidth - 8
+                );
+                const tooltipY = Math.max(activePoint.y - tooltipHeight - 14, top + 8);
+
+                return (
+                  <g transform={`translate(${tooltipX} ${tooltipY})`}>
+                    <rect
+                      width={tooltipWidth}
+                      height={tooltipHeight}
+                      rx="10"
+                      className="analytics-trend__tooltip-box"
+                    />
+                    <text x="12" y="18" className="analytics-trend__tooltip-title">
+                      {activePoint.label}
+                    </text>
+                    <text x="12" y="35" className="analytics-trend__tooltip-value">
+                      {formatCurrency(activePoint.value)}
+                    </text>
+                  </g>
+                );
+              })()}
+            </g>
+          )}
 
           {series.map((item, index) => {
             const shouldShow =
@@ -394,6 +514,378 @@ function SpendOverviewChart({ comparison, selectedRange }) {
   );
 }
 
+
+function DailySpendBars({ items, emptyMessage }) {
+  const [activeBar, setActiveBar] = useState(null);
+
+  if (items.length === 0) {
+    return <div className="analytics-empty">{emptyMessage}</div>;
+  }
+
+  const width = 600;
+  const height = 235;
+  const left = 48;
+  const right = 16;
+  const top = 18;
+  const bottom = 40;
+  const chartWidth = width - left - right;
+  const chartHeight = height - top - bottom;
+  const peakValue = Math.max(...items.map((item) => item.value), 0);
+  const step = peakValue > 0 ? getNiceStep(peakValue / 3) : 25;
+  const maximum = Math.max(step * 3, 1);
+  const slotWidth = chartWidth / items.length;
+  const barWidth = Math.min(24, Math.max(12, slotWidth * 0.32));
+
+  return (
+    <div className="daily-bars-chart">
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        role="img"
+        aria-label="Daily spending bar chart"
+        onMouseLeave={() => setActiveBar(null)}
+      >
+        {Array.from({ length: 4 }, (_, index) => {
+          const value = step * index;
+          const y = top + chartHeight - (value / maximum) * chartHeight;
+          return (
+            <g key={`daily-grid-${index}`}>
+              <line
+                x1={left}
+                x2={width - right}
+                y1={y}
+                y2={y}
+                className="daily-bars-chart__grid"
+              />
+              <text
+                x={left - 10}
+                y={y + 4}
+                textAnchor="end"
+                className="daily-bars-chart__axis"
+              >
+                ₹{formatAxisValue(value)}
+              </text>
+            </g>
+          );
+        })}
+
+        {items.map((item, index) => {
+          const x = left + index * slotWidth + (slotWidth - barWidth) / 2;
+          const barHeight = (item.value / maximum) * chartHeight;
+          const y = top + chartHeight - barHeight;
+          const labelY = height - 15;
+
+          return (
+            <g key={item.label}>
+              <rect
+                x={x}
+                y={y}
+                width={barWidth}
+                height={Math.max(barHeight, item.value > 0 ? 4 : 0)}
+                rx="3"
+                className="daily-bars-chart__bar"
+                onMouseEnter={() => setActiveBar({ ...item, x, y })}
+                onFocus={() => setActiveBar({ ...item, x, y })}
+                tabIndex="0"
+                aria-label={`${item.label}: ${formatCurrency(item.value)}`}
+              />
+              <text
+                x={x + barWidth / 2}
+                y={labelY}
+                textAnchor="middle"
+                className="daily-bars-chart__label"
+              >
+                {item.label}
+              </text>
+            </g>
+          );
+        })}
+
+        {activeBar && (
+          <g aria-hidden="true">
+            {(() => {
+              const tooltipWidth = 108;
+              const tooltipHeight = 48;
+              const tooltipX = Math.min(
+                Math.max(activeBar.x - tooltipWidth / 2 + barWidth / 2, left + 8),
+                width - right - tooltipWidth - 8
+              );
+              const tooltipY = Math.max(activeBar.y - tooltipHeight - 12, top + 8);
+
+              return (
+                <g transform={`translate(${tooltipX} ${tooltipY})`}>
+                  <rect
+                    width={tooltipWidth}
+                    height={tooltipHeight}
+                    rx="10"
+                    className="daily-bars-chart__tooltip-box"
+                  />
+                  <text x="12" y="17" className="daily-bars-chart__tooltip-title">
+                    {activeBar.label}
+                  </text>
+                  <text x="12" y="32" className="daily-bars-chart__tooltip-value">
+                    {formatCurrency(activeBar.value)}
+                  </text>
+                  {activeBar.count ? (
+                    <text x="12" y="43" className="daily-bars-chart__tooltip-meta">
+                      {activeBar.count} entries
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })()}
+          </g>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+
+const DISTRIBUTION_OPTIONS = [
+  { value: "type", label: "Type-wise Spending" },
+  { value: "payment", label: "Payment Split" },
+  { value: "period", label: "Period-wise Spending" },
+  { value: "needs", label: "Needs vs Wants" },
+  { value: "topCategory", label: "Top Category Share" },
+  { value: "budget", label: "Monthly Budget Usage" },
+  { value: "cashUsage", label: "Cash Usage" },
+];
+
+function normalizeDistributionKey(value = "") {
+  return String(value).trim().toLowerCase();
+}
+
+function getMonthlyBudgetValue() {
+  if (typeof window === "undefined") return 0;
+
+  const possibleKeys = [
+    "monthlyBudget",
+    "expenseMonthlyBudget",
+    "expense_tracker_monthly_budget",
+  ];
+
+  for (const key of possibleKeys) {
+    const value = Number(window.localStorage.getItem(key));
+    if (Number.isFinite(value) && value > 0) return value;
+  }
+
+  return 0;
+}
+
+function isEssentialExpense(item) {
+  const type = normalizeDistributionKey(item.type);
+  const name = normalizeDistributionKey(item.name || item.description);
+  const essentialWords = [
+    "bus",
+    "train",
+    "office",
+    "home",
+    "room",
+    "food",
+    "rice",
+    "idly",
+    "idli",
+    "dosa",
+    "poori",
+    "meal",
+    "egg",
+    "curd",
+    "medicine",
+    "medical",
+  ];
+
+  if (["bus", "food"].includes(type)) return true;
+  return essentialWords.some((word) => name.includes(word));
+}
+
+function buildDistributionData(mode, analytics) {
+  const total = analytics.cashTotal + analytics.gpayTotal;
+
+  if (mode === "type") {
+    return {
+      title: "Type-wise Spending",
+      centerLabel: "Total",
+      data: analytics.typeSeries,
+    };
+  }
+
+  if (mode === "payment") {
+    return {
+      title: "Payment Split",
+      centerLabel: "Total",
+      data: [
+        { label: "Cash", value: analytics.cashTotal },
+        { label: "GPay", value: analytics.gpayTotal },
+      ].filter((item) => item.value > 0),
+    };
+  }
+
+  if (mode === "period") {
+    return {
+      title: "Period-wise Spending",
+      centerLabel: "Total",
+      data: analytics.periodSeries,
+    };
+  }
+
+  if (mode === "needs") {
+    return {
+      title: "Needs vs Wants",
+      centerLabel: "Total",
+      data: [
+        { label: "Needs", value: analytics.needsTotal },
+        { label: "Wants", value: analytics.wantsTotal },
+      ].filter((item) => item.value > 0),
+    };
+  }
+
+  if (mode === "topCategory") {
+    const top = analytics.typeSeries[0];
+    if (!top) {
+      return {
+        title: "Top Category Share",
+        centerLabel: "Total",
+        data: [],
+      };
+    }
+
+    return {
+      title: "Top Category Share",
+      centerLabel: top.label,
+      data: [
+        { label: capitalize(top.label), value: top.value },
+        { label: "Remaining", value: Math.max(total - top.value, 0) },
+      ].filter((item) => item.value > 0),
+    };
+  }
+
+  if (mode === "budget") {
+    const budget = getMonthlyBudgetValue();
+    if (!budget) {
+      return {
+        title: "Monthly Budget Usage",
+        centerLabel: "Budget",
+        data: [],
+        emptyMessage: "No monthly budget is set.",
+      };
+    }
+
+    return {
+      title: "Monthly Budget Usage",
+      centerLabel: "Budget",
+      data: [
+        { label: "Spent", value: Math.min(total, budget) },
+        { label: "Remaining", value: Math.max(budget - total, 0) },
+        ...(total > budget ? [{ label: "Over budget", value: total - budget }] : []),
+      ].filter((item) => item.value > 0),
+    };
+  }
+
+  return {
+    title: "Cash Usage",
+    centerLabel: "Cash",
+    data: [
+      { label: "Cash", value: analytics.cashTotal },
+      { label: "Non-cash", value: analytics.gpayTotal },
+    ].filter((item) => item.value > 0),
+  };
+}
+
+function DistributionDonut({ mode, analytics }) {
+  const [activeIndex, setActiveIndex] = useState(null);
+  const config = buildDistributionData(mode, analytics);
+  const data = config.data || [];
+  const total = data.reduce((sum, item) => sum + toNumber(item.value), 0);
+  const radius = 58;
+  const circumference = 2 * Math.PI * radius;
+  let offset = 0;
+  const activeItem = activeIndex !== null ? data[activeIndex] : null;
+  const centerValue = activeItem ? activeItem.value : total;
+  const centerLabel = activeItem ? capitalize(activeItem.label) : config.centerLabel;
+  const activePercent = activeItem && total > 0 ? Math.round((activeItem.value / total) * 100) : null;
+
+  if (!total) {
+    return (
+      <div className="distribution-donut distribution-donut--empty">
+        <div className="analytics-empty">
+          {config.emptyMessage || "No distribution data available."}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="distribution-donut">
+      <div className="distribution-donut__visual">
+        <svg viewBox="0 0 160 160" role="img" aria-label={config.title}>
+          <circle
+            cx="80"
+            cy="80"
+            r={radius}
+            className="distribution-donut__track"
+          />
+          {data.map((item, index) => {
+            const percentage = item.value / total;
+            const dash = Math.max(percentage * circumference - 2, 0);
+            const segment = (
+              <circle
+                key={`${item.label}-${index}`}
+                cx="80"
+                cy="80"
+                r={radius}
+                className={`distribution-donut__segment distribution-donut__segment--${index % 7}`}
+                strokeDasharray={`${dash} ${circumference}`}
+                strokeDashoffset={-offset}
+                style={{ opacity: activeIndex === null || activeIndex === index ? 1 : 0.32 }}
+                onMouseEnter={() => setActiveIndex(index)}
+                onFocus={() => setActiveIndex(index)}
+                tabIndex="0"
+                aria-label={`${capitalize(item.label)}: ${formatCurrency(item.value)}`}
+              />
+            );
+            offset += percentage * circumference;
+            return segment;
+          })}
+        </svg>
+        <div className="distribution-donut__center" aria-hidden="true">
+          <strong>{activePercent !== null ? `${activePercent}%` : formatCurrency(centerValue)}</strong>
+          <span>{activePercent !== null ? formatCurrency(centerValue) : centerLabel}</span>
+        </div>
+      </div>
+
+      <div className="distribution-donut__legend" onMouseLeave={() => setActiveIndex(null)}>
+        <div className="distribution-donut__legend-heading">
+          <span>{config.title}</span>
+          <strong>{formatCurrency(total)}</strong>
+        </div>
+        {data.map((item, index) => {
+          const percentage = total > 0 ? (item.value / total) * 100 : 0;
+          return (
+            <button
+              type="button"
+              key={`${item.label}-${index}`}
+              className={
+                activeIndex === index
+                  ? "distribution-donut__legend-item distribution-donut__legend-item--active"
+                  : "distribution-donut__legend-item"
+              }
+              onMouseEnter={() => setActiveIndex(index)}
+              onFocus={() => setActiveIndex(index)}
+            >
+              <span className={`distribution-donut__dot distribution-donut__dot--${index % 7}`} />
+              <span className="distribution-donut__legend-label">
+                {capitalize(item.label)}
+              </span>
+              <strong>{formatCurrency(item.value)}</strong>
+              <small>{percentage.toFixed(0)}%</small>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function PaymentSplit({ cashTotal, gpayTotal }) {
   const total = cashTotal + gpayTotal;
   const cashPercentage = total > 0 ? (cashTotal / total) * 100 : 0;
@@ -431,6 +923,7 @@ function PaymentSplit({ cashTotal, gpayTotal }) {
 
 export function ReportsAnalytics({ items = [] }) {
   const [trendRange, setTrendRange] = useState("thisWeek");
+  const [distributionMode, setDistributionMode] = useState("type");
 
   const analytics = useMemo(() => {
     const typeTotals = groupExpenses(items, (item) => item.type);
@@ -449,14 +942,32 @@ export function ReportsAnalytics({ items = [] }) {
       label: period.label,
       value: periodTotals[period.value] || 0,
     })).filter((item) => item.value > 0);
+    const needsTotal = items
+      .filter((item) => isEssentialExpense(item))
+      .reduce((total, item) => total + toNumber(item.price), 0);
+    const wantsTotal = items
+      .filter((item) => !isEssentialExpense(item))
+      .reduce((total, item) => total + toNumber(item.price), 0);
+    const dailyMap = items.reduce((result, item) => {
+      if (!item.date) return result;
+      const current = result[item.date] || { value: 0, count: 0 };
+      current.value += toNumber(item.price);
+      current.count += 1;
+      result[item.date] = current;
+      return result;
+    }, {});
+    const dailySeries = items.length > 0 ? buildContinuousDailySeries(dailyMap, 10) : [];
 
     return {
       spendComparison: getSpendComparison(items, trendRange),
       typeSeries: toSortedSeries(typeTotals, 6),
       periodSeries: orderedPeriods,
       itemSeries: toSortedSeries(itemTotals, 6),
+      dailySeries,
       cashTotal,
       gpayTotal,
+      needsTotal,
+      wantsTotal,
     };
   }, [items, trendRange]);
 
@@ -471,7 +982,7 @@ export function ReportsAnalytics({ items = [] }) {
       </div>
 
       <div className="reports-analytics-grid">
-        <article className="analytics-card analytics-card--trend">
+        <article className="analytics-card analytics-card--trend" {...getTiltProps()}>
           <div className="analytics-card__header analytics-card__header--overview">
             <h4>Spend Overview</h4>
             <label className="analytics-range-select">
@@ -494,10 +1005,33 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card analytics-card--payment">
-          <div className="analytics-card__header">
+        <article className="analytics-card analytics-card--distribution" {...getTiltProps()}>
+          <div className="analytics-card__header analytics-card__header--distribution">
             <div>
               <span>Distribution</span>
+              <h4>Smart Donut Chart</h4>
+            </div>
+            <label className="analytics-range-select analytics-distribution-select">
+              <select
+                value={distributionMode}
+                onChange={(event) => setDistributionMode(event.target.value)}
+                aria-label="Distribution chart type"
+              >
+                {DISTRIBUTION_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <DistributionDonut mode={distributionMode} analytics={analytics} />
+        </article>
+
+        <article className="analytics-card analytics-card--payment" {...getTiltProps()}>
+          <div className="analytics-card__header">
+            <div>
+              <span>Payment</span>
               <h4>Payment Split</h4>
             </div>
           </div>
@@ -507,7 +1041,8 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card analytics-card--type">
+
+        <article className="analytics-card analytics-card--type" {...getTiltProps()}>
           <div className="analytics-card__header">
             <div>
               <span>Categories</span>
@@ -520,7 +1055,7 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card analytics-card--period">
+        <article className="analytics-card analytics-card--period" {...getTiltProps()}>
           <div className="analytics-card__header">
             <div>
               <span>Time of day</span>
@@ -533,7 +1068,7 @@ export function ReportsAnalytics({ items = [] }) {
           />
         </article>
 
-        <article className="analytics-card analytics-card--items">
+        <article className="analytics-card analytics-card--items" {...getTiltProps()}>
           <div className="analytics-card__header">
             <div>
               <span>Highest totals</span>

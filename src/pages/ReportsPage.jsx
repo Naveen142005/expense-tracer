@@ -210,6 +210,23 @@ function ReportsPage() {
     setFilters(defaultFilters);
   }
 
+  function isMobileReportView() {
+    if (typeof window === "undefined") return false;
+    return window.matchMedia("(max-width: 900px)").matches;
+  }
+
+  function handleReportChange(nextReport) {
+    setActiveReport(nextReport);
+
+    setShowAnalytics(false);
+    setShowMobileCards(false);
+    setIsMobileFilterOpen(false);
+
+    if (isMobileReportView()) {
+      setIsReportMenuOpen(false);
+    }
+  }
+
   const filteredExpenses = useMemo(() => {
     return expenses.filter((item) => {
       const dateMatch = isDateInRange(
@@ -495,16 +512,32 @@ function ReportsPage() {
             aria-pressed={showAnalytics}
             onClick={() => setShowAnalytics((current) => !current)}
           >
-            {showAnalytics ? "Hide Analytics" : "Show Analytics"}
+            <span className="reports-action-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M5 19V10M12 19V5M19 19V13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>{showAnalytics ? "Hide Analytics" : "Analytics"}</span>
+            <span className="reports-action-btn__chevron" aria-hidden="true">{showAnalytics ? "▲" : "▼"}</span>
           </button>
 
           <button
             type="button"
-            className="reports-action-btn reports-header-summary-btn"
+            className={
+              showMobileCards
+                ? "reports-action-btn reports-header-summary-btn reports-action-btn--active"
+                : "reports-action-btn reports-header-summary-btn"
+            }
             aria-pressed={showMobileCards}
             onClick={() => setShowMobileCards((current) => !current)}
           >
-            {showMobileCards ? "Hide Summary" : "Show Summary"}
+            <span className="reports-action-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M7 7H17M7 12H17M7 17H13" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>{showMobileCards ? "Hide Summary" : "Summary"}</span>
+            <span className="reports-action-btn__chevron" aria-hidden="true">{showMobileCards ? "▲" : "▼"}</span>
           </button>
 
           
@@ -530,7 +563,7 @@ function ReportsPage() {
         <div className="reports-left-panel">
           <ReportSidebar
             activeReport={activeReport}
-            onChange={setActiveReport}
+            onChange={handleReportChange}
             isOpen={isReportMenuOpen}
             onToggle={() => setIsReportMenuOpen((prev) => !prev)}
           />

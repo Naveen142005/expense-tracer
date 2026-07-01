@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from "react-router-dom";
 import Navbar from "./Navbar";
+import AiChatbotWidget from "../ai/AiChatbotWidget";
 
 function AppLayout() {
   const location = useLocation();
@@ -18,6 +19,8 @@ function AppLayout() {
       >
         <Outlet />
       </main>
+
+      <AiChatbotWidget />
     </div>
   );
 }
