@@ -544,6 +544,27 @@ function ReportsPage() {
 
           <button
             type="button"
+            className={
+              isMobileFilterOpen
+                ? "reports-action-btn reports-action-btn--active"
+                : "reports-action-btn"
+            }
+            aria-pressed={isMobileFilterOpen}
+            onClick={() => setIsMobileFilterOpen(true)}
+          >
+            <span className="reports-action-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M4 6H20M7 12H17M10 18H14" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </svg>
+            </span>
+            <span>Filters</span>
+            {activeFilterCount > 0 && (
+              <span className="reports-action-filter-count">{activeFilterCount}</span>
+            )}
+          </button>
+
+          <button
+            type="button"
             className="reports-action-btn reports-action-btn--primary"
             onClick={() => loadReports({ background: true })}
             disabled={refreshing}

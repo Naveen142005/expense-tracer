@@ -9948,3 +9948,1339 @@ table th.table-cell--description .table-sort-btn {
     border-radius: 9px !important;
   }
 }
+/* ========================================================= */
+/* Final reports analytics + details modal + filter fix       */
+/* ========================================================= */
+
+/* The filter drawer must be available on desktop and mobile. */
+.page-container--reports .reports-right-panel {
+  display: flex !important;
+}
+
+.page-container--reports .reports-action-filter-count {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--reports-primary);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1;
+}
+
+/* Keep only the Spend Overview and Smart Donut cards. */
+.page-container--reports .reports-analytics-grid {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+.page-container--reports .analytics-card--trend,
+.page-container--reports .analytics-card--distribution {
+  grid-column: 1 !important;
+  grid-row: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+
+.page-container--reports .analytics-card--distribution {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+@media (min-width: 1100px) {
+  .page-container--reports .reports-analytics-grid {
+    grid-template-columns: minmax(0, 1.65fr) minmax(340px, 0.95fr) !important;
+    grid-template-rows: minmax(0, auto) !important;
+  }
+
+  .page-container--reports .analytics-card--trend {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    height: 100% !important;
+  }
+
+  .page-container--reports .analytics-card--distribution {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    height: 100% !important;
+  }
+
+  .page-container--reports .analytics-card--distribution .distribution-donut {
+    display: grid !important;
+    grid-template-columns: minmax(145px, 0.82fr) minmax(0, 1.18fr) !important;
+    align-items: center !important;
+    align-content: center !important;
+    gap: 18px !important;
+    width: 100% !important;
+  }
+
+  .page-container--reports .analytics-card--distribution .distribution-donut__visual {
+    width: 100% !important;
+    max-width: 205px !important;
+    margin: 0 auto !important;
+  }
+
+  .page-container--reports .analytics-card--distribution .distribution-donut__visual svg {
+    width: 100% !important;
+    height: auto !important;
+  }
+
+  .page-container--reports .analytics-card--distribution .distribution-donut__legend {
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-self: center !important;
+  }
+}
+
+@media (max-width: 1099px) {
+  .page-container--reports .analytics-card--distribution .distribution-donut {
+    min-height: 0 !important;
+  }
+}
+
+/* Compact, interactive graph tooltip. */
+.page-container--reports .analytics-trend__active-layer {
+  pointer-events: none;
+}
+
+.page-container--reports .analytics-trend__details-button {
+  pointer-events: all;
+  cursor: pointer;
+  outline: none;
+}
+
+.page-container--reports .analytics-trend__details-button rect {
+  fill: color-mix(in srgb, var(--reports-primary) 84%, #1d4ed8 16%);
+  stroke: color-mix(in srgb, var(--reports-primary) 70%, #ffffff 30%);
+  stroke-width: 0.7;
+}
+
+.page-container--reports .analytics-trend__details-button text {
+  fill: #ffffff;
+  font-size: 9.5px;
+  font-weight: 850;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.page-container--reports .analytics-trend__details-button:hover rect,
+.page-container--reports .analytics-trend__details-button:focus rect {
+  filter: brightness(1.08);
+}
+
+/* Spending details modal opened from a graph point. */
+.analytics-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1450;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(2, 6, 23, 0.72);
+  backdrop-filter: blur(5px);
+}
+
+.analytics-detail-modal {
+  width: min(820px, 100%);
+  max-height: min(78dvh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--reports-line);
+  border-radius: 18px;
+  background: var(--reports-panel);
+  color: var(--reports-text);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.46);
+}
+
+.analytics-detail-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--reports-line);
+}
+
+.analytics-detail-modal__header span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--reports-primary);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.analytics-detail-modal__header h3 {
+  margin: 0;
+  color: var(--reports-text);
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.analytics-detail-modal__close {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--reports-line);
+  border-radius: 10px;
+  background: var(--reports-panel-muted);
+  color: var(--reports-text);
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.analytics-detail-modal__close:hover,
+.analytics-detail-modal__close:focus-visible {
+  border-color: var(--reports-primary);
+  color: var(--reports-primary);
+  outline: none;
+}
+
+.analytics-detail-modal__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 22px;
+  border-bottom: 1px solid var(--reports-line);
+  background: color-mix(in srgb, var(--reports-panel-muted) 82%, transparent);
+}
+
+.analytics-detail-modal__meta span {
+  color: var(--reports-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.analytics-detail-modal__meta strong {
+  color: var(--reports-primary);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.analytics-detail-table-wrap {
+  min-height: 0;
+  overflow: auto;
+  padding: 0 22px 20px;
+}
+
+.analytics-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 660px;
+}
+
+.analytics-detail-table th,
+.analytics-detail-table td {
+  padding: 13px 12px;
+  border-bottom: 1px solid var(--reports-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.analytics-detail-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--reports-panel);
+  color: var(--reports-muted);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.analytics-detail-table td {
+  color: var(--reports-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.analytics-detail-table th:last-child,
+.analytics-detail-table td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.analytics-detail-table tbody tr:hover {
+  background: color-mix(in srgb, var(--reports-primary) 7%, transparent);
+}
+
+.analytics-detail-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  border-bottom: 0;
+  background: var(--reports-panel-muted);
+  color: var(--reports-text);
+  font-weight: 900;
+}
+
+.analytics-detail-table__empty {
+  padding: 34px 16px !important;
+  color: var(--reports-muted) !important;
+  text-align: center !important;
+}
+
+@media (max-width: 900px) {
+  .page-container--reports .reports-workspace-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .page-container--reports .reports-action-btn--primary {
+    grid-column: auto !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .analytics-detail-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .analytics-detail-modal {
+    width: 100%;
+    max-height: 88dvh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .analytics-detail-modal__header {
+    padding: 17px 16px 14px;
+  }
+
+  .analytics-detail-modal__header h3 {
+    font-size: 18px;
+  }
+
+  .analytics-detail-modal__meta {
+    padding: 12px 16px;
+  }
+
+  .analytics-detail-table-wrap {
+    padding: 0 12px 16px;
+  }
+
+  .analytics-detail-table {
+    min-width: 560px;
+  }
+
+  .analytics-detail-table th,
+  .analytics-detail-table td {
+    padding: 11px 9px;
+    font-size: 12px;
+  }
+}
+
+/* Portal modals live outside .reports-page-shell, so provide theme variables. */
+.analytics-detail-modal {
+  --reports-panel: #ffffff;
+  --reports-panel-muted: #f7f9fc;
+  --reports-line: #dbe3ee;
+  --reports-text: #172033;
+  --reports-muted: #64748b;
+  --reports-primary: #2563eb;
+}
+
+[data-theme="dark"] .analytics-detail-modal {
+  --reports-panel: #1e2127;
+  --reports-panel-muted: #252930;
+  --reports-line: #373d47;
+  --reports-text: #f4f6f8;
+  --reports-muted: #a8b0bd;
+  --reports-primary: #60a5fa;
+}
+
+/* Equal-height safety for the final two-card analytics row. */
+@media (min-width: 1100px) {
+  .page-container--reports .analytics-card--trend,
+  .page-container--reports .analytics-card--distribution {
+    align-self: stretch !important;
+    max-height: none !important;
+  }
+
+  .page-container--reports .analytics-card--trend {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .page-container--reports .analytics-card--trend .spend-overview,
+  .page-container--reports .analytics-card--distribution .distribution-donut {
+    flex: 1 1 auto !important;
+  }
+
+  .page-container--reports .analytics-card--distribution .distribution-donut {
+    justify-content: center !important;
+  }
+}
+
+
+/* ========================================================= */
+/* Final donut + compact graph details + period modal layout  */
+/* ========================================================= */
+
+/* Large donut first, clean distribution details underneath. */
+.page-container--reports .analytics-card--distribution {
+  overflow: hidden !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut {
+  width: 100% !important;
+  min-height: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: stretch !important;
+  gap: 18px !important;
+  padding: 8px 10px 10px !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__visual {
+  width: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+  margin: 0 auto !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__visual svg {
+  display: block !important;
+  width: min(285px, 78%) !important;
+  max-width: 285px !important;
+  height: auto !important;
+  margin: 0 auto !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__center strong {
+  font-size: 17px !important;
+  line-height: 1.1 !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__center span {
+  margin-top: 4px !important;
+  font-size: 10px !important;
+  letter-spacing: 0.04em !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__legend {
+  width: min(100%, 430px) !important;
+  max-height: none !important;
+  overflow: visible !important;
+  align-self: center !important;
+  margin: 0 auto !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__legend-heading {
+  padding: 0 4px 8px !important;
+}
+
+.page-container--reports .analytics-card--distribution .distribution-donut__legend-item {
+  width: 100% !important;
+  min-height: 34px !important;
+  padding: 7px 5px !important;
+}
+
+/* View details is a small underlined text link, not a button. */
+.page-container--reports .analytics-trend__details-button rect,
+.page-container--reports .analytics-trend__details-button:hover rect,
+.page-container--reports .analytics-trend__details-button:focus rect {
+  fill: transparent !important;
+  stroke: none !important;
+  filter: none !important;
+}
+
+.page-container--reports .analytics-trend__details-button text {
+  fill: var(--reports-primary) !important;
+  font-size: 8.5px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 2px !important;
+}
+
+.page-container--reports .analytics-trend__details-button:hover text,
+.page-container--reports .analytics-trend__details-button:focus text {
+  opacity: 0.78 !important;
+}
+
+.page-container--reports .spend-overview .analytics-trend__tooltip-title {
+  font-size: 9.5px !important;
+}
+
+.page-container--reports .spend-overview .analytics-trend__tooltip-value {
+  font-size: 9.5px !important;
+  font-weight: 700 !important;
+}
+
+/* Period-grouped spending modal. */
+.analytics-detail-modal {
+  width: min(700px, 100%);
+  max-height: min(84dvh, 760px);
+}
+
+.analytics-detail-sections {
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 8px;
+}
+
+.analytics-detail-period {
+  padding: 0 0 20px;
+}
+
+.analytics-detail-period + .analytics-detail-period {
+  padding-top: 18px;
+  border-top: 1px solid var(--reports-line);
+}
+
+.analytics-detail-period__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.analytics-detail-period__heading h4 {
+  margin: 0;
+  color: var(--reports-text);
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.analytics-detail-period__heading span {
+  color: var(--reports-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.analytics-detail-period__table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--reports-line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--reports-panel-muted) 74%, transparent);
+}
+
+.analytics-detail-period__table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.analytics-detail-period__table th,
+.analytics-detail-period__table td {
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--reports-line);
+  color: var(--reports-text);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.analytics-detail-period__table th {
+  color: var(--reports-muted);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.analytics-detail-period__table td {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.35;
+}
+
+.analytics-detail-period__table th:nth-child(1),
+.analytics-detail-period__table td:nth-child(1) {
+  width: 52%;
+}
+
+.analytics-detail-period__table th:nth-child(2),
+.analytics-detail-period__table td:nth-child(2) {
+  width: 24%;
+}
+
+.analytics-detail-period__table th:last-child,
+.analytics-detail-period__table td:last-child {
+  width: 24%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.analytics-detail-period__table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.analytics-detail-period__total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 10px 4px 0;
+}
+
+.analytics-detail-period__total span {
+  color: var(--reports-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.analytics-detail-period__total strong {
+  min-width: 94px;
+  color: var(--reports-text);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.analytics-detail-empty {
+  padding: 38px 16px;
+  color: var(--reports-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.analytics-detail-modal__grand-total {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  padding: 14px 22px 17px;
+  border-top: 1px solid var(--reports-line);
+  background: var(--reports-panel-muted);
+}
+
+.analytics-detail-modal__grand-total span {
+  color: var(--reports-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.analytics-detail-modal__grand-total strong {
+  min-width: 108px;
+  color: var(--reports-primary);
+  font-size: 17px;
+  font-weight: 800;
+  text-align: right;
+}
+
+@media (min-width: 1100px) {
+  .page-container--reports .analytics-card--distribution .distribution-donut__visual svg {
+    width: min(300px, 82%) !important;
+    max-width: 300px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .page-container--reports .analytics-card--distribution .distribution-donut {
+    gap: 14px !important;
+    padding: 5px 0 4px !important;
+  }
+
+  .page-container--reports .analytics-card--distribution .distribution-donut__visual svg {
+    width: min(225px, 72vw) !important;
+    max-width: 225px !important;
+  }
+
+  .analytics-detail-sections {
+    padding: 15px 14px 6px;
+  }
+
+  .analytics-detail-period {
+    padding-bottom: 17px;
+  }
+
+  .analytics-detail-period + .analytics-detail-period {
+    padding-top: 15px;
+  }
+
+  .analytics-detail-period__heading h4 {
+    font-size: 15px;
+  }
+
+  .analytics-detail-period__table th,
+  .analytics-detail-period__table td {
+    padding: 9px 10px;
+  }
+
+  .analytics-detail-period__table th {
+    font-size: 10.5px;
+  }
+
+  .analytics-detail-period__table td {
+    font-size: 12px;
+  }
+
+  .analytics-detail-period__table th:nth-child(1),
+  .analytics-detail-period__table td:nth-child(1) {
+    width: 48%;
+  }
+
+  .analytics-detail-period__table th:nth-child(2),
+  .analytics-detail-period__table td:nth-child(2) {
+    width: 25%;
+  }
+
+  .analytics-detail-period__table th:last-child,
+  .analytics-detail-period__table td:last-child {
+    width: 27%;
+  }
+
+  .analytics-detail-modal__grand-total {
+    padding: 13px 15px 15px;
+  }
+}
+
+/* ========================================================= */
+/* Spending details modal - simple, clean, no x-overflow      */
+/* ========================================================= */
+
+.analytics-detail-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  height: auto;
+}
+
+.analytics-detail-modal__meta {
+  justify-content: flex-start;
+  padding: 11px 22px;
+}
+
+.analytics-detail-sections {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(100dvh - 250px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 16px 22px 6px;
+}
+
+.analytics-detail-period {
+  min-width: 0;
+  padding-bottom: 16px;
+}
+
+.analytics-detail-period + .analytics-detail-period {
+  padding-top: 16px;
+}
+
+.analytics-detail-period__heading {
+  margin-bottom: 8px;
+}
+
+.analytics-detail-period__table-wrap {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.analytics-detail-period__table {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  table-layout: fixed;
+}
+
+.analytics-detail-period__table th,
+.analytics-detail-period__table td {
+  min-width: 0;
+  padding: 9px 12px;
+  overflow: hidden;
+}
+
+.analytics-detail-period__table th:nth-child(1),
+.analytics-detail-period__table td:nth-child(1) {
+  width: 56%;
+}
+
+.analytics-detail-period__table th:nth-child(2),
+.analytics-detail-period__table td:nth-child(2) {
+  width: 22%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.analytics-detail-period__table th:last-child,
+.analytics-detail-period__table td:last-child {
+  width: 22%;
+  white-space: nowrap;
+}
+
+.analytics-detail-item-name {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.analytics-detail-period__total {
+  display: none !important;
+}
+
+.analytics-detail-modal__grand-total {
+  flex: 0 0 auto;
+  padding: 13px 22px 15px;
+}
+
+@media (max-width: 640px) {
+  .analytics-detail-modal {
+    width: 100%;
+    max-height: calc(100dvh - 8px);
+  }
+
+  .analytics-detail-modal__meta {
+    padding: 10px 15px;
+  }
+
+  .analytics-detail-sections {
+    max-height: calc(100dvh - 220px);
+    padding: 13px 14px 4px;
+  }
+
+  .analytics-detail-period {
+    padding-bottom: 14px;
+  }
+
+  .analytics-detail-period + .analytics-detail-period {
+    padding-top: 14px;
+  }
+
+  .analytics-detail-period__table th,
+  .analytics-detail-period__table td {
+    padding: 8px 9px;
+  }
+
+  .analytics-detail-period__table th:nth-child(1),
+  .analytics-detail-period__table td:nth-child(1) {
+    width: 52%;
+  }
+
+  .analytics-detail-period__table th:nth-child(2),
+  .analytics-detail-period__table td:nth-child(2) {
+    width: 23%;
+  }
+
+  .analytics-detail-period__table th:last-child,
+  .analytics-detail-period__table td:last-child {
+    width: 25%;
+  }
+
+  .analytics-detail-modal__grand-total {
+    padding: 12px 15px 14px;
+  }
+}
+
+/* ========================================================= */
+/* Spending details modal - compact aligned table            */
+/* ========================================================= */
+
+@media (min-width: 641px) {
+  .analytics-detail-modal {
+    width: min(640px, calc(100vw - 40px)) !important;
+  }
+}
+
+.analytics-detail-modal__header {
+  padding-left: 18px !important;
+  padding-right: 18px !important;
+}
+
+.analytics-detail-modal__meta {
+  padding: 9px 18px !important;
+}
+
+.analytics-detail-sections {
+  padding: 14px 18px 4px !important;
+}
+
+.analytics-detail-period {
+  padding-bottom: 13px !important;
+}
+
+.analytics-detail-period + .analytics-detail-period {
+  padding-top: 13px !important;
+}
+
+.analytics-detail-period__heading {
+  margin-bottom: 7px !important;
+}
+
+.analytics-detail-period__heading h4 {
+  font-size: 15px !important;
+}
+
+.analytics-detail-period__table-wrap {
+  border-radius: 10px !important;
+}
+
+.analytics-detail-period__table th,
+.analytics-detail-period__table td {
+  padding: 8px 10px !important;
+  line-height: 1.25 !important;
+}
+
+.analytics-detail-period__table th {
+  font-size: 10.5px !important;
+}
+
+.analytics-detail-period__table td {
+  font-size: 12.5px !important;
+}
+
+.analytics-detail-period__table th:nth-child(1),
+.analytics-detail-period__table td:nth-child(1) {
+  width: 64% !important;
+  text-align: left !important;
+}
+
+.analytics-detail-period__table th:nth-child(2),
+.analytics-detail-period__table td:nth-child(2) {
+  width: 18% !important;
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+.analytics-detail-period__table th:last-child,
+.analytics-detail-period__table td:last-child {
+  width: 18% !important;
+  padding-left: 6px !important;
+  padding-right: 10px !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+.analytics-detail-item-name {
+  text-align: left !important;
+}
+
+.analytics-detail-modal__grand-total {
+  gap: 12px !important;
+  padding: 11px 18px 13px !important;
+}
+
+.analytics-detail-modal__grand-total strong {
+  min-width: 88px !important;
+}
+
+@media (max-width: 640px) {
+  .analytics-detail-modal {
+    width: calc(100vw - 12px) !important;
+  }
+
+  .analytics-detail-modal__header {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+  }
+
+  .analytics-detail-modal__meta {
+    padding: 9px 14px !important;
+  }
+
+  .analytics-detail-sections {
+    padding: 12px 12px 3px !important;
+  }
+
+  .analytics-detail-period {
+    padding-bottom: 12px !important;
+  }
+
+  .analytics-detail-period + .analytics-detail-period {
+    padding-top: 12px !important;
+  }
+
+  .analytics-detail-period__table th,
+  .analytics-detail-period__table td {
+    padding: 8px !important;
+  }
+
+  .analytics-detail-period__table th:nth-child(1),
+  .analytics-detail-period__table td:nth-child(1) {
+    width: 58% !important;
+  }
+
+  .analytics-detail-period__table th:nth-child(2),
+  .analytics-detail-period__table td:nth-child(2) {
+    width: 21% !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  .analytics-detail-period__table th:last-child,
+  .analytics-detail-period__table td:last-child {
+    width: 21% !important;
+    padding-left: 4px !important;
+    padding-right: 8px !important;
+  }
+
+  .analytics-detail-modal__grand-total {
+    padding: 11px 14px 13px !important;
+  }
+}
+/* =========================================
+   Reports Mobile Controls - Clean Fix
+========================================= */
+
+@media (max-width: 700px) {
+  /* Mobile action buttons container */
+  .reports-mobile-controls,
+  .reports-mobile-actions,
+  .reports-mobile-under-menu-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+    padding: 0 !important;
+    margin: 12px 0 0 !important;
+  }
+
+  /* Analytics, Summary and Refresh buttons */
+  .reports-mobile-controls > button,
+  .reports-mobile-actions > button,
+  .reports-mobile-under-menu-actions > button {
+    min-width: 0 !important;
+    min-height: 42px !important;
+    padding: 10px 12px !important;
+
+    color: #ffffff !important;
+    background: #2563eb !important;
+    border: 1px solid #2563eb !important;
+    border-radius: 10px !important;
+
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+
+    opacity: 1 !important;
+    filter: none !important;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18) !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+  }
+
+  /* Remove faded/white icon appearance */
+  .reports-mobile-controls button svg,
+  .reports-mobile-actions button svg,
+  .reports-mobile-under-menu-actions button svg {
+    color: #ffffff !important;
+    stroke: currentColor !important;
+    opacity: 1 !important;
+  }
+
+  /* Active/open button */
+  .reports-mobile-controls > button.active,
+  .reports-mobile-controls > button[aria-expanded="true"],
+  .reports-mobile-actions > button.active,
+  .reports-mobile-actions > button[aria-expanded="true"],
+  .reports-mobile-under-menu-actions > button.active,
+  .reports-mobile-under-menu-actions > button[aria-expanded="true"] {
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
+  }
+
+  /* Remove the Filters button on phone */
+  .reports-mobile-controls > button:nth-child(3),
+  .reports-mobile-actions > button:nth-child(3),
+  .reports-mobile-controls .reports-filter-button,
+  .reports-mobile-actions .reports-filter-button,
+  .reports-mobile-under-menu-actions .reports-filter-button,
+  .reports-mobile-controls button[data-action="filters"],
+  .reports-mobile-actions button[data-action="filters"],
+  .reports-mobile-controls button[aria-label*="Filter"],
+  .reports-mobile-actions button[aria-label*="Filter"] {
+    display: none !important;
+  }
+
+  /* Refresh should occupy the full second row */
+  .reports-mobile-controls > button:last-child,
+  .reports-mobile-actions > button:last-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* Remove unwanted button gradients and overlays */
+  .reports-mobile-controls > button::before,
+  .reports-mobile-controls > button::after,
+  .reports-mobile-actions > button::before,
+  .reports-mobile-actions > button::after,
+  .reports-mobile-under-menu-actions > button::before,
+  .reports-mobile-under-menu-actions > button::after {
+    display: none !important;
+    content: none !important;
+  }
+}
+
+/* =========================================
+   Reports Mobile Controls - Clean Fix
+========================================= */
+
+@media (max-width: 700px) {
+  /* Mobile action buttons container */
+  .reports-mobile-controls,
+  .reports-mobile-actions,
+  .reports-mobile-under-menu-actions {
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+    padding: 0 !important;
+    margin: 12px 0 0 !important;
+  }
+
+  /* Analytics, Summary and Refresh buttons */
+  .reports-mobile-controls > button,
+  .reports-mobile-actions > button,
+  .reports-mobile-under-menu-actions > button {
+    min-width: 0 !important;
+    min-height: 42px !important;
+    padding: 10px 12px !important;
+
+    color: #ffffff !important;
+    background: #2563eb !important;
+    border: 1px solid #2563eb !important;
+    border-radius: 10px !important;
+
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
+
+    opacity: 1 !important;
+    filter: none !important;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18) !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 7px !important;
+  }
+
+  /* Remove faded/white icon appearance */
+  .reports-mobile-controls button svg,
+  .reports-mobile-actions button svg,
+  .reports-mobile-under-menu-actions button svg {
+    color: #ffffff !important;
+    stroke: currentColor !important;
+    opacity: 1 !important;
+  }
+
+  /* Active/open button */
+  .reports-mobile-controls > button.active,
+  .reports-mobile-controls > button[aria-expanded="true"],
+  .reports-mobile-actions > button.active,
+  .reports-mobile-actions > button[aria-expanded="true"],
+  .reports-mobile-under-menu-actions > button.active,
+  .reports-mobile-under-menu-actions > button[aria-expanded="true"] {
+    background: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
+  }
+
+  /* Remove the Filters button on phone */
+  .reports-mobile-controls > button:nth-child(3),
+  .reports-mobile-actions > button:nth-child(3),
+  .reports-mobile-controls .reports-filter-button,
+  .reports-mobile-actions .reports-filter-button,
+  .reports-mobile-under-menu-actions .reports-filter-button,
+  .reports-mobile-controls button[data-action="filters"],
+  .reports-mobile-actions button[data-action="filters"],
+  .reports-mobile-controls button[aria-label*="Filter"],
+  .reports-mobile-actions button[aria-label*="Filter"] {
+    display: none !important;
+  }
+
+  /* Refresh should occupy the full second row */
+  .reports-mobile-controls > button:last-child,
+  .reports-mobile-actions > button:last-child {
+    grid-column: 1 / -1 !important;
+  }
+
+  /* Remove unwanted button gradients and overlays */
+  .reports-mobile-controls > button::before,
+  .reports-mobile-controls > button::after,
+  .reports-mobile-actions > button::before,
+  .reports-mobile-actions > button::after,
+  .reports-mobile-under-menu-actions > button::before,
+  .reports-mobile-under-menu-actions > button::after {
+    display: none !important;
+    content: none !important;
+  }
+}
+
+/* =====================================================
+   Reports phone buttons — final light/dark mode fix
+   Paste at the very END of global.css
+===================================================== */
+
+@media (max-width: 700px) {
+  .reports-page-shell .reports-workspace-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+    width: 100% !important;
+  }
+
+  /* Hide the third button: Filters */
+  .reports-page-shell
+    .reports-workspace-actions
+    > button:nth-of-type(3) {
+    display: none !important;
+  }
+
+  /* Analytics and Summary */
+  .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn:not(.reports-action-btn--primary) {
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 43px !important;
+    padding: 9px 12px !important;
+
+    background: #ffffff !important;
+    background-image: none !important;
+    border: 1px solid #93b4eb !important;
+    border-radius: 10px !important;
+
+    color: #1d4ed8 !important;
+    -webkit-text-fill-color: #1d4ed8 !important;
+
+    font-size: 13px !important;
+    font-weight: 700 !important;
+
+    opacity: 1 !important;
+    filter: none !important;
+    box-shadow: 0 2px 7px rgba(37, 99, 235, 0.1) !important;
+
+    justify-content: center !important;
+    gap: 7px !important;
+  }
+
+  /* Icons */
+  .reports-page-shell
+    .reports-workspace-actions
+    .reports-action-btn__icon {
+    width: 25px !important;
+    height: 25px !important;
+    border-radius: 7px !important;
+    background: #e8f1ff !important;
+    color: #2563eb !important;
+  }
+
+  .reports-page-shell
+    .reports-workspace-actions
+    .reports-action-btn__icon
+    svg {
+    width: 15px !important;
+    height: 15px !important;
+    stroke: currentColor !important;
+  }
+
+  /* Open/active Analytics or Summary */
+  .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn--active:not(.reports-action-btn--primary) {
+    background: #eaf2ff !important;
+    background-image: none !important;
+    border-color: #2563eb !important;
+    color: #1d4ed8 !important;
+    -webkit-text-fill-color: #1d4ed8 !important;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12) !important;
+  }
+
+  /* Refresh button */
+  .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn--primary {
+    display: flex !important;
+    grid-column: 1 / -1 !important;
+
+    width: 100% !important;
+    min-height: 43px !important;
+    padding: 10px 14px !important;
+
+    background: #2563eb !important;
+    background-image: none !important;
+    border: 1px solid #2563eb !important;
+    border-radius: 10px !important;
+
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+
+    font-size: 13px !important;
+    font-weight: 750 !important;
+
+    opacity: 1 !important;
+    filter: none !important;
+    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2) !important;
+
+    align-items: center !important;
+    justify-content: center !important;
+  }
+
+  /* Remove previous gradient overlays */
+  .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn::before,
+  .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn::after {
+    display: none !important;
+    content: none !important;
+  }
+}
+
+/* Dark mode phone colours */
+@media (max-width: 700px) {
+  [data-theme="dark"]
+    .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn:not(.reports-action-btn--primary) {
+    background: #1e293b !important;
+    border-color: #475569 !important;
+    color: #e2e8f0 !important;
+    -webkit-text-fill-color: #e2e8f0 !important;
+  }
+
+  [data-theme="dark"]
+    .reports-page-shell
+    .reports-workspace-actions
+    > .reports-action-btn--active:not(.reports-action-btn--primary) {
+    background: #1e3a5f !important;
+    border-color: #60a5fa !important;
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+  }
+}

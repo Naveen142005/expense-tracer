@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { PERIODS } from "../../utils/constants";
 import { formatCurrency, toNumber } from "../../utils/totalUtils";
 
@@ -83,6 +84,9 @@ function getSpendComparison(items, range) {
         label,
         current: isFutureMonth ? null : monthlyTotals[`${currentYear}-${month}`] || 0,
         previous: monthlyTotals[`${previousYear}-${month}`] || 0,
+        currentDetailKey: `${currentYear}-${month}`,
+        previousDetailKey: `${previousYear}-${month}`,
+        detailType: "month",
       };
     });
 
@@ -146,6 +150,9 @@ function getSpendComparison(items, range) {
           ? dailyTotals[toDateKey(currentDate)] || 0
           : null,
       previous: previousExists ? dailyTotals[toDateKey(previousDate)] || 0 : null,
+      currentDetailKey: currentExists ? toDateKey(currentDate) : null,
+      previousDetailKey: previousExists ? toDateKey(previousDate) : null,
+      detailType: "date",
     };
   });
 
@@ -270,9 +277,196 @@ function HorizontalBars({ items, emptyMessage }) {
   );
 }
 
-function SpendOverviewChart({ comparison, selectedRange }) {
+
+function formatDetailPeriod(detailKey, detailType) {
+  if (!detailKey) return "Spending details";
+
+  if (detailType === "month") {
+    const [year, month] = detailKey.split("-").map(Number);
+    if (!year || !month) return detailKey;
+    return new Intl.DateTimeFormat(undefined, {
+      month: "long",
+      year: "numeric",
+    }).format(new Date(year, month - 1, 1));
+  }
+
+  const date = parseDateKey(detailKey);
+  if (!date) return detailKey;
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatPaymentName(value = "") {
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === "gpay") return "GPay";
+  return capitalize(normalized || "unknown");
+}
+
+function ExpenseDetailsModal({ selection, items, onClose }) {
+  const detailItems = useMemo(() => {
+    if (!selection?.detailKey) return [];
+
+    return items.filter((item) => {
+      if (selection.detailType === "month") {
+        return String(item.date || "").slice(0, 7) === selection.detailKey;
+      }
+      return item.date === selection.detailKey;
+    });
+  }, [items, selection]);
+
+  const groupedPeriods = useMemo(() => {
+    const knownPeriods = new Set(PERIODS.map((period) => period.value));
+
+    return PERIODS.map((period) => {
+      const periodItems = detailItems.filter((item) => {
+        const itemPeriod = String(item.period || "other").trim().toLowerCase();
+        const normalizedPeriod = knownPeriods.has(itemPeriod) ? itemPeriod : "other";
+        return normalizedPeriod === period.value;
+      });
+
+      return {
+        ...period,
+        items: periodItems,
+      };
+    }).filter((period) => period.items.length > 0);
+  }, [detailItems]);
+
+  const detailTotal = useMemo(
+    () => detailItems.reduce((total, item) => total + toNumber(item.price), 0),
+    [detailItems]
+  );
+
+  useEffect(() => {
+    if (!selection) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [selection, onClose]);
+
+  if (!selection) return null;
+
+  const periodLabel = formatDetailPeriod(
+    selection.detailKey,
+    selection.detailType
+  );
+
+  return createPortal(
+    <div
+      className="analytics-detail-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="analytics-detail-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="analytics-detail-title"
+      >
+        <header className="analytics-detail-modal__header">
+          <div>
+            <span>Spending details</span>
+            <h3 id="analytics-detail-title">{periodLabel}</h3>
+          </div>
+          <button
+            type="button"
+            className="analytics-detail-modal__close"
+            onClick={onClose}
+            aria-label="Close spending details"
+            autoFocus
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="analytics-detail-modal__meta">
+          <span>
+            {detailItems.length} {detailItems.length === 1 ? "item" : "items"}
+          </span>
+        </div>
+
+        <div className="analytics-detail-sections">
+          {groupedPeriods.length > 0 ? (
+            groupedPeriods.map((period) => (
+              <section className="analytics-detail-period" key={period.value}>
+                <div className="analytics-detail-period__heading">
+                  <h4>{period.label}</h4>
+                  <span>
+                    {period.items.length} {period.items.length === 1 ? "item" : "items"}
+                  </span>
+                </div>
+
+                <div className="analytics-detail-period__table-wrap">
+                  <table className="analytics-detail-period__table">
+                    <thead>
+                      <tr>
+                        <th>Item</th>
+                        <th>Payment</th>
+                        <th>Price</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {period.items.map((item, index) => {
+                        const itemName = item.name || item.description || "-";
+
+                        return (
+                          <tr key={item.id || `${item.date}-${itemName}-${index}`}>
+                            <td>
+                              <span
+                                className="analytics-detail-item-name"
+                                title={itemName}
+                              >
+                                {itemName}
+                              </span>
+                            </td>
+                            <td>{formatPaymentName(item.paymentType)}</td>
+                            <td>{formatCurrency(item.price)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+              </section>
+            ))
+          ) : (
+            <div className="analytics-detail-empty">
+              No expenses were recorded for this period.
+            </div>
+          )}
+        </div>
+
+        {groupedPeriods.length > 0 ? (
+          <footer className="analytics-detail-modal__grand-total">
+            <span>Overall total</span>
+            <strong>{formatCurrency(detailTotal)}</strong>
+          </footer>
+        ) : null}
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
   const { series, currentLabel, previousLabel } = comparison;
   const [activePoint, setActivePoint] = useState(null);
+  const [selectedDetail, setSelectedDetail] = useState(null);
   const width = 620;
   const height = 340;
   const left = 48;
@@ -298,6 +492,9 @@ function SpendOverviewChart({ comparison, selectedRange }) {
     return {
       label: item.label,
       value,
+      detailKey:
+        key === "previous" ? item.previousDetailKey : item.currentDetailKey,
+      detailType: item.detailType || "date",
       x: left + (index / divisor) * chartWidth,
       y: top + chartHeight - (value / maximum) * chartHeight,
     };
@@ -419,13 +616,20 @@ function SpendOverviewChart({ comparison, selectedRange }) {
               className="analytics-trend__hit-area"
               onMouseEnter={() => setActivePoint(point)}
               onFocus={() => setActivePoint(point)}
+              onClick={() => setActivePoint(point)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setActivePoint(point);
+                }
+              }}
               tabIndex="0"
               aria-label={`${point.label}: ${formatCurrency(point.value)}`}
             />
           ))}
 
           {activePoint && (
-            <g className="analytics-trend__active-layer" aria-hidden="true">
+            <g className="analytics-trend__active-layer">
               <line
                 x1={activePoint.x}
                 y1={top}
@@ -440,7 +644,7 @@ function SpendOverviewChart({ comparison, selectedRange }) {
                 className="analytics-trend__active-dot"
               />
               {(() => {
-                const tooltipWidth = 126;
+                const tooltipWidth = 176;
                 const tooltipHeight = 48;
                 const tooltipX = Math.min(
                   Math.max(activePoint.x - tooltipWidth / 2, left + 8),
@@ -453,15 +657,38 @@ function SpendOverviewChart({ comparison, selectedRange }) {
                     <rect
                       width={tooltipWidth}
                       height={tooltipHeight}
-                      rx="10"
+                      rx="9"
                       className="analytics-trend__tooltip-box"
                     />
-                    <text x="12" y="18" className="analytics-trend__tooltip-title">
+                    <text x="10" y="16" className="analytics-trend__tooltip-title">
                       {activePoint.label}
                     </text>
-                    <text x="12" y="35" className="analytics-trend__tooltip-value">
-                      {formatCurrency(activePoint.value)}
+                    <text x="10" y="35" className="analytics-trend__tooltip-value">
+                      Spend: {formatCurrency(activePoint.value)}
                     </text>
+                    <g
+                      className="analytics-trend__details-button"
+                      role="button"
+                      tabIndex="0"
+                      onClick={() => setSelectedDetail(activePoint)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedDetail(activePoint);
+                        }
+                      }}
+                      aria-label={`View spending details for ${activePoint.label}`}
+                    >
+                      <rect
+                        className="analytics-trend__details-hitbox"
+                        x="105"
+                        y="20"
+                        width="61"
+                        height="20"
+                        rx="4"
+                      />
+                      <text x="166" y="35" textAnchor="end">View details</text>
+                    </g>
                   </g>
                 );
               })()}
@@ -510,6 +737,12 @@ function SpendOverviewChart({ comparison, selectedRange }) {
           {changeLabel}
         </span>
       </div>
+
+      <ExpenseDetailsModal
+        selection={selectedDetail}
+        items={items}
+        onClose={() => setSelectedDetail(null)}
+      />
     </div>
   );
 }
@@ -1002,6 +1235,7 @@ export function ReportsAnalytics({ items = [] }) {
           <SpendOverviewChart
             comparison={analytics.spendComparison}
             selectedRange={trendRange}
+            items={items}
           />
         </article>
 
@@ -1028,58 +1262,6 @@ export function ReportsAnalytics({ items = [] }) {
           <DistributionDonut mode={distributionMode} analytics={analytics} />
         </article>
 
-        <article className="analytics-card analytics-card--payment" {...getTiltProps()}>
-          <div className="analytics-card__header">
-            <div>
-              <span>Payment</span>
-              <h4>Payment Split</h4>
-            </div>
-          </div>
-          <PaymentSplit
-            cashTotal={analytics.cashTotal}
-            gpayTotal={analytics.gpayTotal}
-          />
-        </article>
-
-
-        <article className="analytics-card analytics-card--type" {...getTiltProps()}>
-          <div className="analytics-card__header">
-            <div>
-              <span>Categories</span>
-              <h4>Spend by Type</h4>
-            </div>
-          </div>
-          <HorizontalBars
-            items={analytics.typeSeries}
-            emptyMessage="No type data available."
-          />
-        </article>
-
-        <article className="analytics-card analytics-card--period" {...getTiltProps()}>
-          <div className="analytics-card__header">
-            <div>
-              <span>Time of day</span>
-              <h4>Spend by Period</h4>
-            </div>
-          </div>
-          <HorizontalBars
-            items={analytics.periodSeries}
-            emptyMessage="No period data available."
-          />
-        </article>
-
-        <article className="analytics-card analytics-card--items" {...getTiltProps()}>
-          <div className="analytics-card__header">
-            <div>
-              <span>Highest totals</span>
-              <h4>Top Items</h4>
-            </div>
-          </div>
-          <HorizontalBars
-            items={analytics.itemSeries}
-            emptyMessage="No item data available."
-          />
-        </article>
       </div>
     </section>
   );
