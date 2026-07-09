@@ -305,6 +305,129 @@ function formatPaymentName(value = "") {
   return capitalize(normalized || "unknown");
 }
 
+
+function getDetailItemName(item) {
+  return String(item.name || item.description || "-").trim();
+}
+
+function compareDetailItems(first, second, key) {
+  if (key === "price") {
+    return toNumber(first.price) - toNumber(second.price);
+  }
+
+  if (key === "payment") {
+    return formatPaymentName(first.paymentType).localeCompare(
+      formatPaymentName(second.paymentType),
+      undefined,
+      { sensitivity: "base", numeric: true }
+    );
+  }
+
+  return getDetailItemName(first).localeCompare(
+    getDetailItemName(second),
+    undefined,
+    { sensitivity: "base", numeric: true }
+  );
+}
+
+function SortablePeriodDetails({ period }) {
+  const [sortConfig, setSortConfig] = useState(null);
+
+  const sortedItems = useMemo(() => {
+    if (!sortConfig) return period.items;
+
+    const direction = sortConfig.direction === "asc" ? 1 : -1;
+    return [...period.items].sort(
+      (first, second) =>
+        compareDetailItems(first, second, sortConfig.key) * direction
+    );
+  }, [period.items, sortConfig]);
+
+  function toggleSort(key) {
+    setSortConfig((current) => {
+      if (!current || current.key !== key) {
+        return { key, direction: "asc" };
+      }
+
+      if (current.direction === "asc") {
+        return { key, direction: "desc" };
+      }
+
+      return null;
+    });
+  }
+
+  function renderSortHeader(label, key) {
+    const isActive = sortConfig?.key === key;
+    const direction = isActive ? sortConfig.direction : null;
+    const nextDirection = !isActive
+      ? "ascending"
+      : direction === "asc"
+      ? "descending"
+      : "default order";
+
+    return (
+      <button
+        type="button"
+        className={`analytics-detail-sort-button${
+          isActive ? " analytics-detail-sort-button--active" : ""
+        }`}
+        onClick={() => toggleSort(key)}
+        aria-label={`Sort ${period.label} ${label} by ${nextDirection}`}
+        title={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        <span className="analytics-detail-sort-indicator" aria-hidden="true">
+          {direction === "asc" ? "↑" : direction === "desc" ? "↓" : "↕"}
+        </span>
+      </button>
+    );
+  }
+
+  return (
+    <section className="analytics-detail-period">
+      <div className="analytics-detail-period__heading">
+        <h4>{period.label}</h4>
+        <span>
+          {period.items.length} {period.items.length === 1 ? "item" : "items"}
+        </span>
+      </div>
+
+      <div className="analytics-detail-period__table-wrap">
+        <table className="analytics-detail-period__table">
+          <thead>
+            <tr>
+              <th scope="col">{renderSortHeader("Item", "item")}</th>
+              <th scope="col">{renderSortHeader("Payment", "payment")}</th>
+              <th scope="col">{renderSortHeader("Price", "price")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sortedItems.map((item, index) => {
+              const itemName = getDetailItemName(item);
+
+              return (
+                <tr key={item.id || `${item.date}-${itemName}-${item.price}-${index}`}>
+                  <td>
+                    <span
+                      className="analytics-detail-item-name"
+                      title={itemName}
+                    >
+                      {itemName}
+                    </span>
+                  </td>
+                  <td>{formatPaymentName(item.paymentType)}</td>
+                  <td>{formatCurrency(item.price)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 function ExpenseDetailsModal({ selection, items, onClose }) {
   const detailItems = useMemo(() => {
     if (!selection?.detailKey) return [];
@@ -402,47 +525,10 @@ function ExpenseDetailsModal({ selection, items, onClose }) {
         <div className="analytics-detail-sections">
           {groupedPeriods.length > 0 ? (
             groupedPeriods.map((period) => (
-              <section className="analytics-detail-period" key={period.value}>
-                <div className="analytics-detail-period__heading">
-                  <h4>{period.label}</h4>
-                  <span>
-                    {period.items.length} {period.items.length === 1 ? "item" : "items"}
-                  </span>
-                </div>
-
-                <div className="analytics-detail-period__table-wrap">
-                  <table className="analytics-detail-period__table">
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Payment</th>
-                        <th>Price</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {period.items.map((item, index) => {
-                        const itemName = item.name || item.description || "-";
-
-                        return (
-                          <tr key={item.id || `${item.date}-${itemName}-${index}`}>
-                            <td>
-                              <span
-                                className="analytics-detail-item-name"
-                                title={itemName}
-                              >
-                                {itemName}
-                              </span>
-                            </td>
-                            <td>{formatPaymentName(item.paymentType)}</td>
-                            <td>{formatCurrency(item.price)}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-              </section>
+              <SortablePeriodDetails
+                key={`${selection.detailType}-${selection.detailKey}-${period.value}`}
+                period={period}
+              />
             ))
           ) : (
             <div className="analytics-detail-empty">
@@ -653,7 +739,7 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
                 const tooltipY = Math.max(activePoint.y - tooltipHeight - 14, top + 8);
 
                 return (
-                  <g transform={`translate(${tooltipX} ${tooltipY})`}>
+                  <g className="analytics-trend__svg-tooltip" transform={`translate(${tooltipX} ${tooltipY})`}>
                     <rect
                       width={tooltipWidth}
                       height={tooltipHeight}
@@ -722,6 +808,22 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
             );
           })}
         </svg>
+
+        {activePoint && (
+          <div className="spend-overview__mobile-point-card" role="status">
+            <div className="spend-overview__mobile-point-copy">
+              <span>{activePoint.label}</span>
+              <strong>Spend: {formatCurrency(activePoint.value)}</strong>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSelectedDetail(activePoint)}
+              aria-label={`View spending details for ${activePoint.label}`}
+            >
+              View details
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="spend-overview__summary">

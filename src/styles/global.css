@@ -10948,198 +10948,210 @@ table th.table-cell--description .table-sort-btn {
     padding: 11px 14px 13px !important;
   }
 }
-/* =========================================
-   Reports Mobile Controls - Clean Fix
-========================================= */
 
-@media (max-width: 700px) {
-  /* Mobile action buttons container */
-  .reports-mobile-controls,
-  .reports-mobile-actions,
-  .reports-mobile-under-menu-actions {
-    width: 100%;
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 9px !important;
-    padding: 0 !important;
-    margin: 12px 0 0 !important;
-  }
+/* ========================================================= */
+/* Graph mobile tooltip + sortable spending detail columns    */
+/* ========================================================= */
 
-  /* Analytics, Summary and Refresh buttons */
-  .reports-mobile-controls > button,
-  .reports-mobile-actions > button,
-  .reports-mobile-under-menu-actions > button {
-    min-width: 0 !important;
-    min-height: 42px !important;
-    padding: 10px 12px !important;
+.analytics-detail-period__table th {
+  padding: 0 !important;
+}
 
-    color: #ffffff !important;
-    background: #2563eb !important;
-    border: 1px solid #2563eb !important;
-    border-radius: 10px !important;
+.analytics-detail-sort-button {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--reports-muted);
+  font: inherit;
+  font-size: inherit;
+  font-weight: 650;
+  line-height: 1.2;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: color 150ms ease, background-color 150ms ease;
+}
 
+.analytics-detail-period__table th:first-child .analytics-detail-sort-button {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.analytics-detail-period__table th:nth-child(2) .analytics-detail-sort-button {
+  justify-content: center;
+  text-align: center;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.analytics-detail-period__table th:last-child .analytics-detail-sort-button {
+  justify-content: flex-end;
+  text-align: right;
+  padding-left: 5px;
+  padding-right: 10px;
+}
+
+.analytics-detail-sort-button:hover,
+.analytics-detail-sort-button:focus-visible,
+.analytics-detail-sort-button--active {
+  color: var(--reports-primary);
+  background: color-mix(in srgb, var(--reports-primary) 8%, transparent);
+}
+
+.analytics-detail-sort-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--reports-primary) 55%, transparent);
+  outline-offset: -2px;
+}
+
+.analytics-detail-sort-indicator {
+  flex: 0 0 auto;
+  color: currentColor;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  opacity: 0.68;
+}
+
+.analytics-detail-sort-button--active .analytics-detail-sort-indicator {
+  opacity: 1;
+}
+
+@media (max-width: 640px) {
+  .page-container--reports .spend-overview .analytics-trend__tooltip-title {
     font-size: 13px !important;
+    font-weight: 750 !important;
+  }
+
+  .page-container--reports .spend-overview .analytics-trend__tooltip-value {
+    font-size: 12.5px !important;
+    font-weight: 750 !important;
+  }
+
+  .page-container--reports .analytics-trend__details-button text {
+    font-size: 11px !important;
     font-weight: 700 !important;
-    line-height: 1.2 !important;
-
-    opacity: 1 !important;
-    filter: none !important;
-    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18) !important;
-
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 7px !important;
   }
 
-  /* Remove faded/white icon appearance */
-  .reports-mobile-controls button svg,
-  .reports-mobile-actions button svg,
-  .reports-mobile-under-menu-actions button svg {
-    color: #ffffff !important;
-    stroke: currentColor !important;
-    opacity: 1 !important;
+  .analytics-detail-sort-button {
+    min-height: 36px;
+    padding-top: 9px;
+    padding-bottom: 9px;
   }
 
-  /* Active/open button */
-  .reports-mobile-controls > button.active,
-  .reports-mobile-controls > button[aria-expanded="true"],
-  .reports-mobile-actions > button.active,
-  .reports-mobile-actions > button[aria-expanded="true"],
-  .reports-mobile-under-menu-actions > button.active,
-  .reports-mobile-under-menu-actions > button[aria-expanded="true"] {
-    background: #1d4ed8 !important;
-    border-color: #1d4ed8 !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
+  .analytics-detail-period__table th:nth-child(2) .analytics-detail-sort-button {
+    padding-left: 3px;
+    padding-right: 3px;
   }
 
-  /* Remove the Filters button on phone */
-  .reports-mobile-controls > button:nth-child(3),
-  .reports-mobile-actions > button:nth-child(3),
-  .reports-mobile-controls .reports-filter-button,
-  .reports-mobile-actions .reports-filter-button,
-  .reports-mobile-under-menu-actions .reports-filter-button,
-  .reports-mobile-controls button[data-action="filters"],
-  .reports-mobile-actions button[data-action="filters"],
-  .reports-mobile-controls button[aria-label*="Filter"],
-  .reports-mobile-actions button[aria-label*="Filter"] {
-    display: none !important;
-  }
-
-  /* Refresh should occupy the full second row */
-  .reports-mobile-controls > button:last-child,
-  .reports-mobile-actions > button:last-child {
-    grid-column: 1 / -1 !important;
-  }
-
-  /* Remove unwanted button gradients and overlays */
-  .reports-mobile-controls > button::before,
-  .reports-mobile-controls > button::after,
-  .reports-mobile-actions > button::before,
-  .reports-mobile-actions > button::after,
-  .reports-mobile-under-menu-actions > button::before,
-  .reports-mobile-under-menu-actions > button::after {
-    display: none !important;
-    content: none !important;
+  .analytics-detail-period__table th:last-child .analytics-detail-sort-button {
+    padding-left: 3px;
+    padding-right: 8px;
   }
 }
 
-/* =========================================
-   Reports Mobile Controls - Clean Fix
-========================================= */
+.analytics-detail-period__table th:nth-child(1),
+.analytics-detail-period__table th:nth-child(2),
+.analytics-detail-period__table th:last-child {
+  padding: 0 !important;
+}
+
+
+/* =====================================================
+   Spend Overview mobile point details — no SVG overlap
+   The desktop SVG tooltip stays unchanged. On phones,
+   point details render as a normal card below the graph.
+===================================================== */
+.spend-overview__mobile-point-card {
+  display: none;
+}
 
 @media (max-width: 700px) {
-  /* Mobile action buttons container */
-  .reports-mobile-controls,
-  .reports-mobile-actions,
-  .reports-mobile-under-menu-actions {
-    width: 100%;
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 9px !important;
-    padding: 0 !important;
-    margin: 12px 0 0 !important;
+  .page-container--reports .spend-overview__chart {
+    overflow: visible !important;
   }
 
-  /* Analytics, Summary and Refresh buttons */
-  .reports-mobile-controls > button,
-  .reports-mobile-actions > button,
-  .reports-mobile-under-menu-actions > button {
-    min-width: 0 !important;
-    min-height: 42px !important;
-    padding: 10px 12px !important;
-
-    color: #ffffff !important;
-    background: #2563eb !important;
-    border: 1px solid #2563eb !important;
-    border-radius: 10px !important;
-
-    font-size: 13px !important;
-    font-weight: 700 !important;
-    line-height: 1.2 !important;
-
-    opacity: 1 !important;
-    filter: none !important;
-    box-shadow: 0 4px 10px rgba(37, 99, 235, 0.18) !important;
-
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    gap: 7px !important;
-  }
-
-  /* Remove faded/white icon appearance */
-  .reports-mobile-controls button svg,
-  .reports-mobile-actions button svg,
-  .reports-mobile-under-menu-actions button svg {
-    color: #ffffff !important;
-    stroke: currentColor !important;
-    opacity: 1 !important;
-  }
-
-  /* Active/open button */
-  .reports-mobile-controls > button.active,
-  .reports-mobile-controls > button[aria-expanded="true"],
-  .reports-mobile-actions > button.active,
-  .reports-mobile-actions > button[aria-expanded="true"],
-  .reports-mobile-under-menu-actions > button.active,
-  .reports-mobile-under-menu-actions > button[aria-expanded="true"] {
-    background: #1d4ed8 !important;
-    border-color: #1d4ed8 !important;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16) !important;
-  }
-
-  /* Remove the Filters button on phone */
-  .reports-mobile-controls > button:nth-child(3),
-  .reports-mobile-actions > button:nth-child(3),
-  .reports-mobile-controls .reports-filter-button,
-  .reports-mobile-actions .reports-filter-button,
-  .reports-mobile-under-menu-actions .reports-filter-button,
-  .reports-mobile-controls button[data-action="filters"],
-  .reports-mobile-actions button[data-action="filters"],
-  .reports-mobile-controls button[aria-label*="Filter"],
-  .reports-mobile-actions button[aria-label*="Filter"] {
+  /* Hide only the scaled SVG popup on phones. */
+  .page-container--reports .analytics-trend__svg-tooltip {
     display: none !important;
   }
 
-  /* Refresh should occupy the full second row */
-  .reports-mobile-controls > button:last-child,
-  .reports-mobile-actions > button:last-child {
-    grid-column: 1 / -1 !important;
+  .page-container--reports .spend-overview__mobile-point-card {
+    display: flex;
+    width: calc(100% - 16px);
+    margin: 8px auto 0;
+    padding: 11px 12px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid color-mix(in srgb, var(--reports-primary) 38%, var(--reports-line) 62%);
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--reports-panel) 94%, var(--reports-primary) 6%);
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
   }
 
-  /* Remove unwanted button gradients and overlays */
-  .reports-mobile-controls > button::before,
-  .reports-mobile-controls > button::after,
-  .reports-mobile-actions > button::before,
-  .reports-mobile-actions > button::after,
-  .reports-mobile-under-menu-actions > button::before,
-  .reports-mobile-under-menu-actions > button::after {
-    display: none !important;
-    content: none !important;
+  .page-container--reports .spend-overview__mobile-point-copy {
+    min-width: 0;
+    display: grid;
+    gap: 3px;
+    text-align: left;
+  }
+
+  .page-container--reports .spend-overview__mobile-point-copy span {
+    color: var(--reports-muted);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .page-container--reports .spend-overview__mobile-point-copy strong {
+    color: var(--reports-text);
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.25;
+    white-space: nowrap;
+  }
+
+  .page-container--reports .spend-overview__mobile-point-card button {
+    flex: 0 0 auto;
+    min-height: 38px;
+    padding: 8px 13px;
+    border: 1px solid var(--reports-primary);
+    border-radius: 9px;
+    background: var(--reports-primary);
+    color: #ffffff;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 800;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 5px 12px color-mix(in srgb, var(--reports-primary) 24%, transparent);
+  }
+
+  .page-container--reports .spend-overview__mobile-point-card button:active {
+    transform: scale(0.98);
   }
 }
 
+@media (max-width: 390px) {
+  .page-container--reports .spend-overview__mobile-point-card {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .page-container--reports .spend-overview__mobile-point-copy strong {
+    font-size: 14px;
+  }
+
+  .page-container--reports .spend-overview__mobile-point-card button {
+    min-height: 36px;
+    padding-inline: 10px;
+    font-size: 12px;
+  }
+}
 /* =====================================================
    Reports phone buttons — final light/dark mode fix
    Paste at the very END of global.css
