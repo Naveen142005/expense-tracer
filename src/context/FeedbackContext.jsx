@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import {
   createContext,
   useCallback,
@@ -37,7 +38,14 @@ export function FeedbackProvider({ children }) {
   }, []);
 
   const notify = useCallback(
-    ({ type = "info", title, message = "", duration }) => {
+    ({
+      type = "info",
+      title,
+      message = "",
+      duration,
+      actionLabel = "",
+      onAction,
+    }) => {
       const id = crypto.randomUUID();
       const toastDuration = duration ?? defaultDurations[type] ?? 4000;
 
@@ -48,6 +56,8 @@ export function FeedbackProvider({ children }) {
           type,
           title: title || "Notification",
           message,
+          actionLabel,
+          onAction,
         },
       ]);
 

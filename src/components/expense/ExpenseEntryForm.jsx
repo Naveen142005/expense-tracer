@@ -1,67 +1,113 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useFeedback } from "../../context/FeedbackContext";
 import {
+  deleteExpenseRecommendation,
   deleteExpenseTemplate,
+  saveExpenseRecommendation,
   saveExpenseTemplate,
+  subscribeToExpenseRecommendations,
   subscribeToExpenseTemplates,
 } from "../../firebase/expenseService";
+import { EXPENSE_TYPES, PAYMENT_TYPES, PERIODS } from "../../utils/constants";
 import {
-  FOOD_SUGGESTIONS,
-  PAYMENT_TYPES,
-  SNACK_SUGGESTIONS,
-} from "../../utils/constants";
+  filterExpenseTemplates,
+  filterSavedRecommendations,
+  getExpenseLabel,
+  normalizeText,
+  sanitizeExpenseItem,
+} from "../../utils/expenseWorkflow";
 import { formatCurrency } from "../../utils/totalUtils";
 import Button from "../common/Button";
 import Input from "../common/Input";
 import Select from "../common/Select";
 
+function getOptionLabel(options, value) {
+  return options.find((option) => option.value === value)?.label || value;
+}
+
 function getLabelByType(type) {
   if (type === "food") return "Food Name";
   if (type === "snacks") return "Snack Name";
   if (type === "bus") return "Description";
-  return "Name / Description";
+  return "Item Name";
 }
 
 function getPlaceholderByType(type) {
   if (type === "food") return "Example: idly";
   if (type === "snacks") return "Example: biscuit";
   if (type === "bus") return "Example: Bus to office";
-  return "Example: recharge, medicine, college";
+  return "Example: tablet, recharge, notebook";
 }
 
-function getTemplateLabel(template) {
-  return template.type === "bus" ? template.description : template.name;
+function createEmptyForm(paymentType = "cash") {
+  return {
+    name: "",
+    description: "",
+    customCategory: "",
+    price: "",
+    paymentType,
+  };
 }
 
-function getUniqueSuggestions(items) {
-  const seen = new Set();
+function createEmptyTemplate(paymentType = "cash") {
+  return {
+    label: "",
+    customCategory: "",
+    price: "",
+    paymentType,
+  };
+}
 
-  return items.filter((item) => {
-    const normalized = String(item || "").trim().toLowerCase();
-    if (!normalized || seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
+function getEntryFieldErrors(expense = {}) {
+  const cleanExpense = sanitizeExpenseItem(expense);
+  const errors = {};
+
+  if (cleanExpense.type === "custom" && !cleanExpense.customCategory) {
+    errors.customCategory = "Enter a custom category.";
+  }
+
+  if (cleanExpense.type === "bus") {
+    if (!cleanExpense.description) {
+      errors.description = "Enter a description for the bus expense.";
+    }
+  } else if (!cleanExpense.name) {
+    errors.name = "Enter an item name.";
+  }
+
+  if (!Number.isFinite(cleanExpense.price) || cleanExpense.price <= 0) {
+    errors.price = "Enter a price greater than zero.";
+  }
+
+  if (
+    !PAYMENT_TYPES.some(
+      (paymentType) => paymentType.value === cleanExpense.paymentType
+    )
+  ) {
+    errors.paymentType = "Select a valid payment type.";
+  }
+
+  return errors;
 }
 
 function TemplateManagerModal({
   open,
+  activePeriod,
   selectedType,
   templates,
   disabled,
   onUse,
-  onUpdate,
+  onSave,
   onDelete,
   onClose,
 }) {
+  const [editorMode, setEditorMode] = useState("");
   const [editingId, setEditingId] = useState("");
-  const [draft, setDraft] = useState({
-    label: "",
-    price: "",
-    paymentType: "cash",
-  });
+  const [draft, setDraft] = useState(createEmptyTemplate());
+  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const periodLabel = getOptionLabel(PERIODS, activePeriod);
+  const typeLabel = getOptionLabel(EXPENSE_TYPES, selectedType);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -74,42 +120,84 @@ function TemplateManagerModal({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [open, saving, onClose]);
 
-  useEffect(() => {
-    setEditingId("");
-    setDraft({ label: "", price: "", paymentType: "cash" });
-  }, [open, selectedType]);
-
   if (!open) return null;
 
-  function startEditing(template) {
+  function beginAdding() {
+    setEditorMode("add");
+    setEditingId("");
+    setDraft(createEmptyTemplate());
+    setError("");
+  }
+
+  function beginEditing(template) {
+    setEditorMode("edit");
     setEditingId(template.id);
     setDraft({
-      label: getTemplateLabel(template) || "",
+      label: getExpenseLabel(template),
+      customCategory: template.customCategory || "",
       price: String(template.price ?? ""),
       paymentType: template.paymentType || "cash",
     });
+    setError("");
   }
 
-  async function handleUpdate(event) {
+  function closeEditor() {
+    setEditorMode("");
+    setEditingId("");
+    setDraft(createEmptyTemplate());
+    setError("");
+  }
+
+  async function handleSave(event) {
     event.preventDefault();
-    const label = draft.label.trim();
+    const label = normalizeText(draft.label);
+    const customCategory = normalizeText(draft.customCategory);
     const price = Number(draft.price);
 
-    if (!label || !price || price <= 0) return;
+    if (!label) {
+      setError("Enter a template name or description.");
+      return;
+    }
+
+    if (selectedType === "custom" && !customCategory) {
+      setError("Enter a custom category for this template.");
+      return;
+    }
+
+    if (!Number.isFinite(price) || price <= 0) {
+      setError("Enter a valid price greater than zero.");
+      return;
+    }
+
+    const duplicate = templates.some(
+      (template) =>
+        template.id !== editingId &&
+        getExpenseLabel(template).toLowerCase() === label.toLowerCase()
+    );
+
+    if (duplicate) {
+      setError(
+        "A template with this name already exists for this period and type."
+      );
+      return;
+    }
 
     try {
       setSaving(true);
-      await onUpdate({
-        id: editingId,
+      setError("");
+      await onSave({
+        id: editingId || undefined,
+        period: activePeriod,
         type: selectedType,
         name: selectedType === "bus" ? "" : label,
         description: selectedType === "bus" ? label : "",
+        customCategory,
         price,
         paymentType: draft.paymentType,
       });
-      setEditingId("");
-    } catch {
-      // The parent reports the error and keeps the editor open for retry.
+      closeEditor();
+    } catch (saveError) {
+      setError(saveError.message || "The template could not be saved.");
     } finally {
       setSaving(false);
     }
@@ -126,7 +214,10 @@ function TemplateManagerModal({
         <div className="template-manager-modal__header">
           <div>
             <h3 id="template-manager-title">Manage Templates</h3>
-            <p>Templates for the selected expense type.</p>
+            <p>
+              Full presets for <strong>{periodLabel}</strong> +{" "}
+              <strong>{typeLabel}</strong> only.
+            </p>
           </div>
           <button
             type="button"
@@ -138,11 +229,46 @@ function TemplateManagerModal({
           </button>
         </div>
 
-        {editingId && (
-          <form className="template-manager-edit" onSubmit={handleUpdate}>
+        {!editorMode && (
+          <button
+            type="button"
+            className="template-add-btn"
+            onClick={beginAdding}
+            disabled={disabled}
+          >
+            + Add New {periodLabel} {typeLabel} Template
+          </button>
+        )}
+
+        {editorMode && (
+          <form className="template-manager-edit" onSubmit={handleSave}>
+            <div className="template-editor-heading">
+              <strong>
+                {editorMode === "add" ? "Add Template" : "Edit Template"}
+              </strong>
+              <span>This preset includes the item, price, and payment type.</span>
+            </div>
+
+            {selectedType === "custom" && (
+              <Input
+                label="Custom Category"
+                name="templateCustomCategory"
+                value={draft.customCategory}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    customCategory: event.target.value,
+                  }))
+                }
+                placeholder="Example: Medicine"
+                required
+                disabled={saving}
+              />
+            )}
+
             <Input
-              label={selectedType === "bus" ? "Description" : "Name"}
-              name="templateEditLabel"
+              label={selectedType === "bus" ? "Description" : "Item Name"}
+              name="templateLabel"
               value={draft.label}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -152,13 +278,15 @@ function TemplateManagerModal({
               }
               required
               disabled={saving}
+              autoFocus
             />
+
             <Input
               label="Price"
-              name="templateEditPrice"
+              name="templatePrice"
               type="number"
-              min="1"
-              step="1"
+              min="0.01"
+              step="0.01"
               value={draft.price}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -169,9 +297,10 @@ function TemplateManagerModal({
               required
               disabled={saving}
             />
+
             <Select
               label="Payment"
-              name="templateEditPayment"
+              name="templatePayment"
               value={draft.paymentType}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -182,11 +311,14 @@ function TemplateManagerModal({
               options={PAYMENT_TYPES}
               disabled={saving}
             />
+
+            {error && <p className="template-manager-error">{error}</p>}
+
             <div className="template-manager-edit__actions">
               <button
                 type="button"
                 className="template-action-btn"
-                onClick={() => setEditingId("")}
+                onClick={closeEditor}
                 disabled={saving}
               >
                 Cancel
@@ -196,7 +328,11 @@ function TemplateManagerModal({
                 className="template-action-btn template-action-btn--primary"
                 disabled={saving || disabled}
               >
-                {saving ? "Saving..." : "Save Changes"}
+                {saving
+                  ? "Saving..."
+                  : editorMode === "add"
+                  ? "Add Template"
+                  : "Save Changes"}
               </button>
             </div>
           </form>
@@ -205,30 +341,33 @@ function TemplateManagerModal({
         <div className="template-manager-list">
           {templates.length === 0 ? (
             <div className="template-manager-empty">
-              No templates saved for this type.
+              No templates saved for {periodLabel} + {typeLabel}.
             </div>
           ) : (
             templates.map((template) => (
               <article key={template.id} className="template-manager-item">
                 <div className="template-manager-item__content">
-                  <strong>{getTemplateLabel(template)}</strong>
+                  <strong>{getExpenseLabel(template)}</strong>
+                  {template.type === "custom" && template.customCategory ? (
+                    <span>Category: {template.customCategory}</span>
+                  ) : null}
                   <span>
-                    {formatCurrency(template.price)} -{" "}
+                    {formatCurrency(template.price)} ·{" "}
                     {template.paymentType === "gpay" ? "GPay" : "Cash"}
                   </span>
                 </div>
                 <div className="template-manager-item__actions">
                   <button
                     type="button"
-                    className="template-action-btn"
+                    className="template-action-btn template-action-btn--primary"
                     onClick={() => onUse(template)}
                   >
-                    Use
+                    Use Template
                   </button>
                   <button
                     type="button"
                     className="template-action-btn"
-                    onClick={() => startEditing(template)}
+                    onClick={() => beginEditing(template)}
                     disabled={disabled}
                   >
                     Edit
@@ -252,25 +391,256 @@ function TemplateManagerModal({
   );
 }
 
+function RecommendationManagerModal({
+  open,
+  selectedType,
+  recommendations,
+  disabled,
+  onUse,
+  onSave,
+  onDelete,
+  onClose,
+}) {
+  const [editorMode, setEditorMode] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [label, setLabel] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const typeLabel = getOptionLabel(EXPENSE_TYPES, selectedType);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !saving) onClose();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, saving, onClose]);
+
+  if (!open) return null;
+
+  function beginAdding() {
+    setEditorMode("add");
+    setEditingId("");
+    setLabel("");
+    setError("");
+  }
+
+  function beginEditing(recommendation) {
+    setEditorMode("edit");
+    setEditingId(recommendation.id);
+    setLabel(recommendation.label);
+    setError("");
+  }
+
+  function closeEditor() {
+    setEditorMode("");
+    setEditingId("");
+    setLabel("");
+    setError("");
+  }
+
+  async function handleSave(event) {
+    event.preventDefault();
+    const cleanLabel = normalizeText(label);
+
+    if (!cleanLabel) {
+      setError("Enter a recommendation name or description.");
+      return;
+    }
+
+    const duplicate = recommendations.some(
+      (recommendation) =>
+        recommendation.id !== editingId &&
+        normalizeText(recommendation.label).toLowerCase() ===
+          cleanLabel.toLowerCase()
+    );
+
+    if (duplicate) {
+      setError("This recommendation already exists for this type.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      await onSave({
+        id: editingId || undefined,
+        type: selectedType,
+        label: cleanLabel,
+      });
+      closeEditor();
+    } catch (saveError) {
+      setError(saveError.message || "The recommendation could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return createPortal(
+    <div className="modal-backdrop template-manager-backdrop" role="presentation">
+      <section
+        className="modal-card template-manager-modal recommendation-manager-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="recommendation-manager-title"
+      >
+        <div className="template-manager-modal__header">
+          <div>
+            <h3 id="recommendation-manager-title">Manage Recommendations</h3>
+            <p>
+              Saved {typeLabel} names only. They never change price or payment.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="template-manager-close"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Close
+          </button>
+        </div>
+
+        {!editorMode && (
+          <button
+            type="button"
+            className="template-add-btn"
+            onClick={beginAdding}
+            disabled={disabled}
+          >
+            + Add New {typeLabel} Recommendation
+          </button>
+        )}
+
+        {editorMode && (
+          <form
+            className="template-manager-edit recommendation-manager-edit"
+            onSubmit={handleSave}
+          >
+            <div className="template-editor-heading">
+              <strong>
+                {editorMode === "add"
+                  ? "Add Recommendation"
+                  : "Edit Recommendation"}
+              </strong>
+              <span>Only this name or description will be suggested.</span>
+            </div>
+            <Input
+              label={getLabelByType(selectedType)}
+              name="recommendationLabel"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              required
+              disabled={saving}
+              autoFocus
+            />
+
+            {error && <p className="template-manager-error">{error}</p>}
+
+            <div className="template-manager-edit__actions">
+              <button
+                type="button"
+                className="template-action-btn"
+                onClick={closeEditor}
+                disabled={saving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="template-action-btn template-action-btn--primary"
+                disabled={saving || disabled}
+              >
+                {saving
+                  ? "Saving..."
+                  : editorMode === "add"
+                  ? "Add Recommendation"
+                  : "Save Changes"}
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="template-manager-list recommendation-manager-list">
+          {recommendations.length === 0 ? (
+            <div className="template-manager-empty">
+              No saved {typeLabel} recommendations yet.
+            </div>
+          ) : (
+            recommendations.map((recommendation) => (
+              <article
+                key={recommendation.id}
+                className="template-manager-item recommendation-manager-item"
+              >
+                <div className="template-manager-item__content">
+                  <strong>{recommendation.label}</strong>
+                  <span>Name-only suggestion</span>
+                </div>
+                <div className="template-manager-item__actions">
+                  <button
+                    type="button"
+                    className="template-action-btn template-action-btn--primary"
+                    onClick={() => onUse(recommendation)}
+                  >
+                    Use Name
+                  </button>
+                  <button
+                    type="button"
+                    className="template-action-btn"
+                    onClick={() => beginEditing(recommendation)}
+                    disabled={disabled}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="template-action-btn template-action-btn--danger"
+                    onClick={() => onDelete(recommendation)}
+                    disabled={disabled}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </article>
+            ))
+          )}
+        </div>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
 function ExpenseEntryForm({
   activePeriod,
   selectedType,
   onAddItem,
+  onAfterAdd,
+  initialPaymentType = "cash",
+  onPaymentTypeChange,
   disabled = false,
 }) {
   const { notify, confirmAction } = useFeedback();
-  const [form, setForm] = useState({
-    name: "",
-    description: "",
-    price: "",
-    paymentType: "cash",
-  });
+  const [form, setForm] = useState(() => createEmptyForm(initialPaymentType));
   const [templates, setTemplates] = useState([]);
+  const [savedRecommendations, setSavedRecommendations] = useState([]);
   const [templateSearch, setTemplateSearch] = useState("");
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
-  const [saveAsTemplate, setSaveAsTemplate] = useState(false);
-  const [templateSaving, setTemplateSaving] = useState(false);
-  const [managerOpen, setManagerOpen] = useState(false);
+  const [recommendationsOpen, setRecommendationsOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [savingQuickRecommendation, setSavingQuickRecommendation] =
+    useState(false);
+  const [templateManagerOpen, setTemplateManagerOpen] = useState(false);
+  const [recommendationManagerOpen, setRecommendationManagerOpen] =
+    useState(false);
+  const [managerMenuOpen, setManagerMenuOpen] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [shakeSubmit, setShakeSubmit] = useState(false);
+  const managerMenuRef = useRef(null);
+  const formRef = useRef(null);
 
   useEffect(() => {
     return subscribeToExpenseTemplates(setTemplates, (error) => {
@@ -284,160 +654,210 @@ function ExpenseEntryForm({
   }, [notify]);
 
   useEffect(() => {
-    setForm({
-      name: "",
-      description: "",
-      price: "",
-      paymentType: "cash",
-    });
-    setTemplateSearch("");
-    setSaveAsTemplate(false);
-    setManagerOpen(false);
-  }, [selectedType]);
+    if (!managerMenuOpen) return undefined;
+
+    function handlePointerDown(event) {
+      if (!managerMenuRef.current?.contains(event.target)) {
+        setManagerMenuOpen(false);
+      }
+    }
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape") setManagerMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [managerMenuOpen]);
+
+  useEffect(() => {
+    return subscribeToExpenseRecommendations(
+      setSavedRecommendations,
+      (error) => {
+        console.error(error);
+        notify({
+          type: "error",
+          title: "Recommendations unavailable",
+          message: "Saved typing recommendations could not be loaded.",
+        });
+      }
+    );
+  }, [notify]);
 
   const typeTemplates = useMemo(
-    () => templates.filter((template) => template.type === selectedType),
-    [templates, selectedType]
+    () =>
+      filterExpenseTemplates({
+        templates,
+        period: activePeriod,
+        type: selectedType,
+        limit: Number.MAX_SAFE_INTEGER,
+      }),
+    [activePeriod, selectedType, templates]
   );
 
-  const matchingTemplates = useMemo(() => {
-    const search = templateSearch.trim().toLowerCase();
+  const matchingTemplates = useMemo(
+    () =>
+      filterExpenseTemplates({
+        templates,
+        period: activePeriod,
+        type: selectedType,
+        query: templateSearch,
+      }),
+    [activePeriod, selectedType, templateSearch, templates]
+  );
 
-    return typeTemplates
-      .filter((template) => {
-        if (!search) return true;
-        const text = `${getTemplateLabel(template)} ${template.price} ${
-          template.paymentType
-        }`.toLowerCase();
-        return text.includes(search);
-      })
-      .slice(0, 8);
-  }, [typeTemplates, templateSearch]);
+  const typeRecommendations = useMemo(
+    () =>
+      filterSavedRecommendations({
+        recommendations: savedRecommendations,
+        type: selectedType,
+        limit: Number.MAX_SAFE_INTEGER,
+      }),
+    [savedRecommendations, selectedType]
+  );
 
-  const savedTypeSuggestions = typeTemplates.map(getTemplateLabel);
-  const nameSuggestions = getUniqueSuggestions([
-    ...(selectedType === "food" ? FOOD_SUGGESTIONS : []),
-    ...(selectedType === "snacks" ? SNACK_SUGGESTIONS : []),
-    ...savedTypeSuggestions,
-  ]);
+  const textField = selectedType === "bus" ? "description" : "name";
+  const textValue = selectedType === "bus" ? form.description : form.name;
+  const matchingRecommendations = useMemo(
+    () =>
+      filterSavedRecommendations({
+        recommendations: savedRecommendations,
+        type: selectedType,
+        query: textValue,
+      }),
+    [savedRecommendations, selectedType, textValue]
+  );
+  const hasExactRecommendation = useMemo(() => {
+    const normalizedValue = normalizeText(textValue).toLowerCase();
+    return typeRecommendations.some(
+      (recommendation) =>
+        normalizeText(recommendation.label).toLowerCase() === normalizedValue
+    );
+  }, [textValue, typeRecommendations]);
+
+  const currentExpense = {
+    period: activePeriod,
+    type: selectedType,
+    ...form,
+  };
+  const formDisabled = disabled || adding;
+  const periodLabel = getOptionLabel(PERIODS, activePeriod);
+  const typeLabel = getOptionLabel(EXPENSE_TYPES, selectedType);
 
   function handleChange(event) {
     const { name, value } = event.target;
-    setForm((previous) => ({ ...previous, [name]: value }));
+    const nextForm = { ...form, [name]: value };
+    setForm(nextForm);
+
+    if (fieldErrors[name]) {
+      const nextErrors = getEntryFieldErrors({
+        period: activePeriod,
+        type: selectedType,
+        ...nextForm,
+      });
+      setFieldErrors((current) => {
+        const updated = { ...current };
+        if (nextErrors[name]) updated[name] = nextErrors[name];
+        else delete updated[name];
+        return updated;
+      });
+    }
+
+    if (name === "paymentType") onPaymentTypeChange?.(value);
   }
 
-  function useTemplate(template) {
+  function applyRecommendation(recommendation) {
+    setForm((current) => ({
+      ...current,
+      name: selectedType === "bus" ? "" : recommendation.label,
+      description: selectedType === "bus" ? recommendation.label : "",
+    }));
+    setFieldErrors((current) => {
+      const updated = { ...current };
+      delete updated[textField];
+      return updated;
+    });
+    setRecommendationsOpen(false);
+  }
+
+  function useRecommendationFromManager(recommendation) {
+    applyRecommendation(recommendation);
+    setRecommendationManagerOpen(false);
+  }
+
+  function applyTemplate(template) {
     setForm({
       name: template.type === "bus" ? "" : template.name || "",
       description:
         template.type === "bus" ? template.description || "" : "",
+      customCategory: template.customCategory || "",
       price: String(template.price ?? ""),
       paymentType: template.paymentType || "cash",
     });
-    setTemplateSearch(getTemplateLabel(template) || "");
+    setTemplateSearch(getExpenseLabel(template));
+    setFieldErrors({});
+    onPaymentTypeChange?.(template.paymentType || "cash");
     setTemplatePickerOpen(false);
-    setManagerOpen(false);
-    setSaveAsTemplate(false);
+    setTemplateManagerOpen(false);
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
 
-    const price = Number(form.price);
-    const textValue =
-      selectedType === "bus"
-        ? form.description.trim()
-        : form.name.trim();
-
-    if (!textValue) {
-      notify({
-        type: "warning",
-        title: selectedType === "bus" ? "Description required" : "Item name required",
-        message: "Enter a name or description for this expense.",
+    const nextErrors = getEntryFieldErrors(currentExpense);
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setShakeSubmit(true);
+      window.requestAnimationFrame(() => {
+        formRef.current
+          ?.querySelector('[aria-invalid="true"]')
+          ?.focus({ preventScroll: false });
       });
       return;
     }
 
-    if (!price || price <= 0) {
-      notify({
-        type: "warning",
-        title: "Invalid price",
-        message: "Enter a price greater than zero.",
+    setFieldErrors({});
+
+    let added;
+
+    try {
+      setAdding(true);
+      added = await onAddItem({
+        id: crypto.randomUUID(),
+        ...sanitizeExpenseItem(currentExpense, "draft"),
+        isDraft: true,
       });
-      return;
+    } finally {
+      setAdding(false);
     }
 
-    const expenseItem = {
-      id: crypto.randomUUID(),
-      period: activePeriod,
-      type: selectedType,
-      name: selectedType === "bus" ? "" : textValue,
-      description: selectedType === "bus" ? textValue : "",
-      price,
-      paymentType: form.paymentType,
-      isDraft: true,
-    };
-
-    onAddItem(expenseItem);
-
-    if (saveAsTemplate) {
-      const existingTemplate = typeTemplates.find(
-        (template) =>
-          String(getTemplateLabel(template) || "").trim().toLowerCase() ===
-          textValue.toLowerCase()
-      );
-
-      try {
-        setTemplateSaving(true);
-        await saveExpenseTemplate({
-          id: existingTemplate?.id,
-          type: selectedType,
-          name: expenseItem.name,
-          description: expenseItem.description,
-          price,
-          paymentType: form.paymentType,
-        });
-        notify({
-          type: "success",
-          title: existingTemplate ? "Template updated" : "Template saved",
-          message: `${textValue} is ready for future expenses.`,
-        });
-      } catch (error) {
-        console.error(error);
-        notify({
-          type: "error",
-          title: "Template not saved",
-          message: "The expense was added, but its template could not be saved.",
-        });
-      } finally {
-        setTemplateSaving(false);
-      }
+    if (added) {
+      setForm(createEmptyForm(form.paymentType));
+      setFieldErrors({});
+      setTemplateSearch("");
+      setRecommendationsOpen(false);
+      onAfterAdd?.();
     }
-
-    setForm({
-      name: "",
-      description: "",
-      price: "",
-      paymentType: "cash",
-    });
-    setTemplateSearch("");
-    setSaveAsTemplate(false);
   }
 
-  async function handleUpdateTemplate(template) {
+  async function handleSaveTemplate(template) {
     try {
       await saveExpenseTemplate(template);
       notify({
         type: "success",
-        title: "Template updated",
-        message: `${getTemplateLabel(template)} was updated.`,
+        title: template.id ? "Template updated" : "Template added",
+        message: `${getExpenseLabel(template)} is ready for ${periodLabel} + ${typeLabel}.`,
       });
     } catch (error) {
       console.error(error);
       notify({
         type: "error",
-        title: "Update failed",
-        message: error.message || "The template could not be updated.",
+        title: template.id ? "Update failed" : "Template not added",
+        message: error.message || "The template could not be saved.",
       });
       throw error;
     }
@@ -446,7 +866,7 @@ function ExpenseEntryForm({
   async function handleDeleteTemplate(template) {
     const confirmed = await confirmAction({
       title: "Delete template?",
-      message: `Delete ${getTemplateLabel(template)} from your saved templates?`,
+      message: `Delete ${getExpenseLabel(template)} from ${periodLabel} + ${typeLabel} templates?`,
       confirmText: "Delete",
       cancelText: "Keep Template",
       tone: "danger",
@@ -459,7 +879,7 @@ function ExpenseEntryForm({
       notify({
         type: "success",
         title: "Template deleted",
-        message: `${getTemplateLabel(template)} was removed.`,
+        message: `${getExpenseLabel(template)} was removed.`,
       });
     } catch (error) {
       console.error(error);
@@ -471,29 +891,161 @@ function ExpenseEntryForm({
     }
   }
 
-  const inputLabel = getLabelByType(selectedType);
-  const inputPlaceholder = getPlaceholderByType(selectedType);
-  const formDisabled = disabled || templateSaving;
+  async function handleSaveRecommendation(recommendation) {
+    try {
+      await saveExpenseRecommendation(recommendation);
+      notify({
+        type: "success",
+        title: recommendation.id
+          ? "Recommendation updated"
+          : "Recommendation added",
+        message: `${recommendation.label} will appear while typing ${typeLabel} items.`,
+      });
+    } catch (error) {
+      console.error(error);
+      notify({
+        type: "error",
+        title: recommendation.id ? "Update failed" : "Recommendation not added",
+        message: error.message || "The recommendation could not be saved.",
+      });
+      throw error;
+    }
+  }
+
+  async function handleQuickSaveRecommendation() {
+    const label = normalizeText(textValue);
+    if (!label || hasExactRecommendation) return;
+
+    try {
+      setSavingQuickRecommendation(true);
+      await handleSaveRecommendation({ type: selectedType, label });
+      setRecommendationsOpen(false);
+    } catch {
+      // handleSaveRecommendation already provides the actionable message.
+    } finally {
+      setSavingQuickRecommendation(false);
+    }
+  }
+
+  async function handleDeleteRecommendation(recommendation) {
+    const confirmed = await confirmAction({
+      title: "Delete recommendation?",
+      message: `Delete ${recommendation.label} from ${typeLabel} typing recommendations?`,
+      confirmText: "Delete",
+      cancelText: "Keep Recommendation",
+      tone: "danger",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await deleteExpenseRecommendation(recommendation.id);
+      notify({
+        type: "success",
+        title: "Recommendation deleted",
+        message: `${recommendation.label} was removed.`,
+      });
+    } catch (error) {
+      console.error(error);
+      notify({
+        type: "error",
+        title: "Delete failed",
+        message: "The recommendation could not be deleted.",
+      });
+    }
+  }
 
   return (
     <>
-      <form className="card expense-entry-form" onSubmit={handleSubmit}>
+      <form
+        ref={formRef}
+        className="card expense-entry-form"
+        onSubmit={handleSubmit}
+        noValidate
+      >
         <div className="expense-entry-form__header">
           <h3>Add Expense Item</h3>
-          <button
-            type="button"
-            className="manage-templates-btn"
-            onClick={() => setManagerOpen(true)}
+          <div className="expense-entry-form__manager-actions">
+            <button
+              type="button"
+              className="manage-templates-btn"
+              onClick={() => setRecommendationManagerOpen(true)}
+              disabled={formDisabled}
+            >
+              Manage Recommendations
+            </button>
+            <button
+              type="button"
+              className="manage-templates-btn"
+              onClick={() => setTemplateManagerOpen(true)}
+              disabled={formDisabled}
+            >
+              Manage Templates
+            </button>
+          </div>
+          <div
+            ref={managerMenuRef}
+            className="expense-entry-form__mobile-menu"
           >
-            Manage Templates
-          </button>
+            <button
+              type="button"
+              className="expense-entry-form__more-btn"
+              aria-label="Open expense item options"
+              aria-expanded={managerMenuOpen}
+              aria-controls="expense-entry-manager-menu"
+              onClick={() => setManagerMenuOpen((current) => !current)}
+              disabled={formDisabled}
+            >
+              <span aria-hidden="true">⋮</span>
+            </button>
+
+            {managerMenuOpen && (
+              <div
+                id="expense-entry-manager-menu"
+                className="expense-entry-form__more-menu"
+                role="menu"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setManagerMenuOpen(false);
+                    setRecommendationManagerOpen(true);
+                  }}
+                >
+                  <span className="expense-entry-form__more-icon" aria-hidden="true">
+                    R
+                  </span>
+                  <span>
+                    <strong>Manage Recommendations</strong>
+                    <small>Add or edit typing suggestions</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setManagerMenuOpen(false);
+                    setTemplateManagerOpen(true);
+                  }}
+                >
+                  <span className="expense-entry-form__more-icon" aria-hidden="true">
+                    T
+                  </span>
+                  <span>
+                    <strong>Manage Templates</strong>
+                    <small>Add or edit complete presets</small>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="template-picker form-field">
-          <label htmlFor="templateSearch">Quick Template (optional)</label>
+        <div className="quick-template-field">
+          <label htmlFor="quickTemplateSearch">Quick Template (optional)</label>
           <input
-            id="templateSearch"
-            type="search"
+            id="quickTemplateSearch"
             className="input"
             value={templateSearch}
             onChange={(event) => {
@@ -504,30 +1056,35 @@ function ExpenseEntryForm({
             onBlur={() =>
               window.setTimeout(() => setTemplatePickerOpen(false), 120)
             }
-            placeholder="Search saved templates..."
+            placeholder={`Search ${periodLabel} + ${typeLabel} templates...`}
             autoComplete="off"
+            disabled={formDisabled}
           />
 
           {templatePickerOpen && (
-            <div className="template-picker__results">
+            <div className="quick-template-results" role="listbox">
               {matchingTemplates.length === 0 ? (
-                <div className="template-picker__empty">
-                  No matching templates.
+                <div className="expense-recommendations__empty">
+                  No matching template for {periodLabel} + {typeLabel}. Use
+                  Manage Templates to add one.
                 </div>
               ) : (
                 matchingTemplates.map((template) => (
                   <button
                     key={template.id}
                     type="button"
-                    className="template-picker__result"
+                    className="quick-template-result"
                     onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => useTemplate(template)}
+                    onClick={() => applyTemplate(template)}
                   >
-                    <span>{getTemplateLabel(template)}</span>
-                    <small>
-                      {formatCurrency(template.price)} -{" "}
+                    <span>
+                      <strong>{getExpenseLabel(template)}</strong>
+                      <small>Full template</small>
+                    </span>
+                    <span>
+                      {formatCurrency(template.price)} ·{" "}
                       {template.paymentType === "gpay" ? "GPay" : "Cash"}
-                    </small>
+                    </span>
                   </button>
                 ))
               )}
@@ -536,26 +1093,109 @@ function ExpenseEntryForm({
         </div>
 
         <div className="form-grid">
-          <>
+          {selectedType === "custom" && (
             <Input
-              label={inputLabel}
-              name={selectedType === "bus" ? "description" : "name"}
-              value={
-                selectedType === "bus" ? form.description : form.name
-              }
+              label="Custom Category"
+              name="customCategory"
+              value={form.customCategory}
               onChange={handleChange}
-              placeholder={inputPlaceholder}
-              list="expense-name-suggestions"
+              placeholder="Example: Medicine, Recharge"
               required
               disabled={formDisabled}
+              autoFocus
+              error={fieldErrors.customCategory}
+            />
+          )}
+
+          <div className="form-field expense-recommendation-field">
+            <label htmlFor="expenseItemText">
+              {getLabelByType(selectedType)} <span className="required">*</span>
+            </label>
+            <input
+              id="expenseItemText"
+              name={textField}
+              className={fieldErrors[textField] ? "input input--error" : "input"}
+              value={textValue}
+              onChange={(event) => {
+                handleChange(event);
+                setRecommendationsOpen(true);
+              }}
+              onFocus={() => {
+                if (normalizeText(textValue)) setRecommendationsOpen(true);
+              }}
+              onBlur={() =>
+                window.setTimeout(() => setRecommendationsOpen(false), 120)
+              }
+              placeholder={getPlaceholderByType(selectedType)}
+              autoComplete="off"
+              autoFocus={selectedType !== "custom"}
+              disabled={formDisabled}
+              aria-invalid={fieldErrors[textField] ? "true" : undefined}
+              aria-describedby={
+                fieldErrors[textField] ? "expenseItemText-error" : undefined
+              }
             />
 
-            <datalist id="expense-name-suggestions">
-              {nameSuggestions.map((item) => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
-          </>
+            {fieldErrors[textField] && (
+              <small
+                id="expenseItemText-error"
+                className="error-text expense-entry-form__field-error"
+                role="alert"
+              >
+                {fieldErrors[textField]}
+              </small>
+            )}
+
+            {recommendationsOpen && normalizeText(textValue) && (
+              <div className="expense-recommendations" role="listbox">
+                {matchingRecommendations.length === 0 ? (
+                  <div className="expense-recommendations__empty">
+                    No saved recommendation matches. You can still use this as
+                    the item name.
+                  </div>
+                ) : (
+                  matchingRecommendations.map((recommendation) => (
+                    <button
+                      key={recommendation.id}
+                      type="button"
+                      className="expense-recommendation"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => applyRecommendation(recommendation)}
+                    >
+                      <span>
+                        <strong>{recommendation.label}</strong>
+                        <small>Saved name recommendation</small>
+                      </span>
+                      <span className="expense-recommendation__details">
+                        Name only
+                      </span>
+                    </button>
+                  ))
+                )}
+
+                {!hasExactRecommendation && (
+                  <button
+                    type="button"
+                    className="expense-recommendation expense-recommendation--add"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={handleQuickSaveRecommendation}
+                    disabled={savingQuickRecommendation || disabled}
+                  >
+                    <span>
+                      <strong>
+                        {savingQuickRecommendation
+                          ? "Saving..."
+                          : `+ Save “${normalizeText(
+                              textValue
+                            )}” as a recommendation`}
+                      </strong>
+                      <small>For {typeLabel} typing suggestions only</small>
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
 
           <Input
             label="Price"
@@ -564,10 +1204,11 @@ function ExpenseEntryForm({
             value={form.price}
             onChange={handleChange}
             placeholder="Enter price"
-            min="1"
-            step="1"
+            min="0.01"
+            step="0.01"
             required
             disabled={formDisabled}
+            error={fieldErrors.price}
           />
 
           <Select
@@ -577,34 +1218,50 @@ function ExpenseEntryForm({
             onChange={handleChange}
             options={PAYMENT_TYPES}
             disabled={formDisabled}
+            error={fieldErrors.paymentType}
           />
         </div>
 
-        <label className="save-template-toggle">
-          <input
-            type="checkbox"
-            checked={saveAsTemplate}
-            onChange={(event) => setSaveAsTemplate(event.target.checked)}
-            disabled={formDisabled}
-          />
-          <span>Save these details as a reusable template</span>
-        </label>
-
-        <Button type="submit" loading={templateSaving} disabled={formDisabled}>
-          Add Item
-        </Button>
+        <div
+          className={
+            shakeSubmit
+              ? "expense-entry-form__submit expense-entry-form__submit--shake"
+              : "expense-entry-form__submit"
+          }
+          onAnimationEnd={() => setShakeSubmit(false)}
+        >
+          <Button type="submit" disabled={formDisabled}>
+            {adding ? "Adding..." : "Add Item"}
+          </Button>
+        </div>
       </form>
 
-      <TemplateManagerModal
-        open={managerOpen}
-        selectedType={selectedType}
-        templates={typeTemplates}
-        disabled={disabled}
-        onUse={useTemplate}
-        onUpdate={handleUpdateTemplate}
-        onDelete={handleDeleteTemplate}
-        onClose={() => setManagerOpen(false)}
-      />
+      {templateManagerOpen && (
+        <TemplateManagerModal
+          open
+          activePeriod={activePeriod}
+          selectedType={selectedType}
+          templates={typeTemplates}
+          disabled={disabled}
+          onUse={applyTemplate}
+          onSave={handleSaveTemplate}
+          onDelete={handleDeleteTemplate}
+          onClose={() => setTemplateManagerOpen(false)}
+        />
+      )}
+
+      {recommendationManagerOpen && (
+        <RecommendationManagerModal
+          open
+          selectedType={selectedType}
+          recommendations={typeRecommendations}
+          disabled={disabled}
+          onUse={useRecommendationFromManager}
+          onSave={handleSaveRecommendation}
+          onDelete={handleDeleteRecommendation}
+          onClose={() => setRecommendationManagerOpen(false)}
+        />
+      )}
     </>
   );
 }

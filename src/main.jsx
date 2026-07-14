@@ -11,6 +11,7 @@ import "./styles/edit-lock.css";
 import "./styles/balance-wallet.css";
 import "./styles/feedback.css";
 import "./styles/ai-chatbot.css";
+import "./styles/expense-workflow.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

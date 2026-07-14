@@ -16,6 +16,19 @@ function ToastViewport({ toasts, onDismiss }) {
             {toast.message && <p>{toast.message}</p>}
           </div>
 
+          {toast.actionLabel && typeof toast.onAction === "function" && (
+            <button
+              type="button"
+              className="app-toast__action"
+              onClick={() => {
+                toast.onAction();
+                onDismiss(toast.id);
+              }}
+            >
+              {toast.actionLabel}
+            </button>
+          )}
+
           <button
             type="button"
             className="app-toast__close"

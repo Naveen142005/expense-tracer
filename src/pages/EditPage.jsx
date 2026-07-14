@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Button from "../components/common/Button";
 import ConfirmModal from "../components/common/ConfirmModal";
 import Loading from "../components/common/Loading";
@@ -9,6 +9,7 @@ import { useEditLock } from "../context/EditLockContext";
 import { useFeedback } from "../context/FeedbackContext";
 import { useExpenses } from "../hooks/useExpenses";
 import { getTodayDate } from "../utils/dateUtils";
+import { validateExpenseItem } from "../utils/expenseWorkflow";
 import {
   calculateCashTotal,
   calculateGPayTotal,
@@ -23,6 +24,7 @@ function createNewEditItem(period) {
     type: "food",
     name: "",
     description: "",
+    customCategory: "",
     price: "",
     paymentType: "cash",
     isNew: true,
@@ -37,7 +39,7 @@ function EditPage() {
   const [selectedDate, setSelectedDate] = useState(todayDate);
   const [loadedDate, setLoadedDate] = useState(todayDate);
   const [activePeriod, setActivePeriod] = useState("all");
-  const [editableItems, setEditableItems] = useState([]);
+  const [editedItems, setEditedItems] = useState(null);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [updateLoading, setUpdateLoading] = useState(false);
 
@@ -48,9 +50,7 @@ function EditPage() {
     updateDateExpenses,
   } = useExpenses(loadedDate);
 
-  useEffect(() => {
-    setEditableItems(expenses);
-  }, [expenses, loadedDate]);
+  const editableItems = editedItems ?? expenses;
 
   const editTotal = useMemo(
     () => calculateTotal(editableItems),
@@ -77,8 +77,32 @@ function EditPage() {
       return;
     }
 
+    if (selectedDate > todayDate) {
+      notify({
+        type: "warning",
+        title: "Future date unavailable",
+        message: "Select today or a previous date.",
+      });
+      setSelectedDate(todayDate);
+      return;
+    }
+
     setLoadedDate(selectedDate);
+    setEditedItems(null);
     setActivePeriod("all");
+  }
+
+  function handleDateChange(value) {
+    if (value > todayDate) {
+      notify({
+        type: "warning",
+        title: "Future date unavailable",
+        message: "Expenses cannot be edited for a future date.",
+      });
+      return;
+    }
+
+    setSelectedDate(value);
   }
 
   function handleAddItem() {
@@ -87,7 +111,10 @@ function EditPage() {
       return;
     }
 
-    setEditableItems((prev) => [...prev, createNewEditItem(activePeriod)]);
+    setEditedItems((prev) => [
+      ...(prev ?? expenses),
+      createNewEditItem(activePeriod),
+    ]);
   }
 
   async function handleDeleteItem(itemId) {
@@ -107,7 +134,9 @@ function EditPage() {
 
     if (!confirmDelete) return;
 
-    setEditableItems((prev) => prev.filter((item) => item.id !== itemId));
+    setEditedItems((prev) =>
+      (prev ?? expenses).filter((item) => item.id !== itemId)
+    );
   }
 
   function handleChangeItem(itemId, field, value) {
@@ -116,8 +145,8 @@ function EditPage() {
       return;
     }
 
-    setEditableItems((prev) =>
-      prev.map((item) => {
+    setEditedItems((prev) =>
+      (prev ?? expenses).map((item) => {
         if (item.id !== itemId) {
           return item;
         }
@@ -129,6 +158,7 @@ function EditPage() {
               type: value,
               description: item.description || item.name || "",
               name: "",
+              customCategory: "",
             };
           }
 
@@ -138,6 +168,8 @@ function EditPage() {
               type: value,
               name: item.name || item.description || "",
               description: "",
+              customCategory:
+                value === "custom" ? item.customCategory || "" : "",
             };
           }
 
@@ -157,19 +189,8 @@ function EditPage() {
 
   function validateItems() {
     for (const item of editableItems) {
-      const price = Number(item.price);
-
-      if (!price || price <= 0) {
-        return "Every item must have valid price.";
-      }
-
-      if (item.type !== "bus" && !item.name.trim()) {
-        return "Food, Snacks, and Custom items must have name/description.";
-      }
-
-      if (!item.period || !item.type || !item.paymentType) {
-        return "Every item must have period, type, and payment type.";
-      }
+      const validationError = validateExpenseItem(item);
+      if (validationError) return validationError;
     }
 
     return "";
@@ -289,8 +310,9 @@ function EditPage() {
 
       <DateSelector
         selectedDate={selectedDate}
-        onDateChange={setSelectedDate}
+        onDateChange={handleDateChange}
         onShowData={handleShowData}
+        maxDate={todayDate}
         loading={expensesLoading}
       />
 

@@ -9,8 +9,10 @@ function Input({
   helperText = "",
   required = false,
   min,
+  max,
   step,
   list,
+  autoFocus = false,
   disabled = false,
 }) {
   return (
@@ -29,14 +31,22 @@ function Input({
         onChange={onChange}
         placeholder={placeholder}
         min={min}
+        max={max}
         step={step}
         list={list}
+        autoFocus={autoFocus}
         disabled={disabled}
         className={error ? "input input--error" : "input"}
+        aria-invalid={error ? "true" : undefined}
+        aria-describedby={error ? `${name}-error` : undefined}
       />
 
       {helperText && !error && <small>{helperText}</small>}
-      {error && <small className="error-text">{error}</small>}
+      {error && (
+        <small id={`${name}-error`} className="error-text" role="alert">
+          {error}
+        </small>
+      )}
     </div>
   );
 }

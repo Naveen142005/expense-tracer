@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import BalanceAdjustForm from "../components/balance/BalanceAdjustForm";
 import BalanceCard from "../components/balance/BalanceCard";
 import Button from "../components/common/Button";
@@ -17,6 +17,12 @@ import { useDraftExpenses } from "../hooks/useDraftExpenses";
 import { useExpenses } from "../hooks/useExpenses";
 import { getTodayDate } from "../utils/dateUtils";
 import {
+  getExpenseLabel,
+  isRecentDuplicate,
+  sanitizeExpenseItem,
+  validateExpenseItem,
+} from "../utils/expenseWorkflow";
+import {
   calculateCashTotal,
   calculateGPayTotal,
   calculateTotal,
@@ -33,10 +39,12 @@ function AddTodayPage() {
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [balanceAdjustLoading, setBalanceAdjustLoading] = useState(false);
+  const [preferredPaymentType, setPreferredPaymentType] = useState("cash");
 
   const {
     draftItems,
     addDraftItem,
+    updateDraftItem,
     deleteDraftItem,
     clearDraftItems,
   } = useDraftExpenses(todayDate);
@@ -71,10 +79,52 @@ function AddTodayPage() {
     [draftItems]
   );
 
-  const overviewItems = useMemo(
-    () => [...savedTodayItems, ...draftItems],
-    [savedTodayItems, draftItems]
-  );
+  useEffect(() => {
+    if (draftItems.length === 0) return undefined;
+
+    function warnBeforeUnload(event) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    function warnBeforeInternalNavigation(event) {
+      const anchor = event.target.closest?.("a[href]");
+      if (
+        !anchor ||
+        event.defaultPrevented ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey ||
+        anchor.target === "_blank"
+      ) {
+        return;
+      }
+
+      const destination = new URL(anchor.href, window.location.href);
+      const isDifferentPage =
+        destination.origin === window.location.origin &&
+        destination.pathname !== window.location.pathname;
+
+      if (
+        isDifferentPage &&
+        !window.confirm(
+          "You have unsaved draft items. Leave this page without submitting them?"
+        )
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    }
+
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    document.addEventListener("click", warnBeforeInternalNavigation, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", warnBeforeUnload);
+      document.removeEventListener("click", warnBeforeInternalNavigation, true);
+    };
+  }, [draftItems.length]);
 
   const selectionGuidance = useMemo(() => {
     if (!activePeriod && !selectedType) {
@@ -92,13 +142,86 @@ function AddTodayPage() {
     return "";
   }, [activePeriod, selectedType]);
 
-  function handleAddItem(item) {
+  async function handleAddItem(item) {
     if (!canEdit) {
       openUnlockDialog();
-      return;
+      return false;
     }
 
-    addDraftItem(item);
+    const validationError = validateExpenseItem(item);
+    if (validationError) {
+      notify({
+        type: "warning",
+        title: "Check expense details",
+        message: validationError,
+      });
+      return false;
+    }
+
+    const recentDuplicate = draftItems.find((draftItem) =>
+      isRecentDuplicate(item, draftItem)
+    );
+
+    if (recentDuplicate) {
+      const addDuplicate = await confirmAction({
+        title: "Possible duplicate expense",
+        message: `${getExpenseLabel(item)} with the same price and payment method was just added. Add it again?`,
+        confirmText: "Add Again",
+        cancelText: "Keep One",
+        tone: "default",
+      });
+
+      if (!addDuplicate) return false;
+    }
+
+    const cleanItem = {
+      ...sanitizeExpenseItem(item, "draft"),
+      id: item.id || crypto.randomUUID(),
+      isDraft: true,
+      draftAddedAt: Date.now(),
+    };
+
+    addDraftItem(cleanItem);
+    setPreferredPaymentType(cleanItem.paymentType);
+
+    notify({
+      type: "success",
+      title: "Item added to draft",
+      message: `${getExpenseLabel(cleanItem)} · ${formatCurrency(cleanItem.price)}`,
+      duration: 6000,
+      actionLabel: "Undo",
+      onAction: () => deleteDraftItem(cleanItem.id),
+    });
+
+    return true;
+  }
+
+  function handleUpdateDraftItem(itemId, changes) {
+    const currentItem = draftItems.find((item) => item.id === itemId);
+    if (!currentItem) return false;
+
+    const updatedItem = {
+      ...currentItem,
+      ...changes,
+    };
+    const validationError = validateExpenseItem(updatedItem);
+
+    if (validationError) {
+      notify({
+        type: "warning",
+        title: "Check expense details",
+        message: validationError,
+      });
+      return false;
+    }
+
+    updateDraftItem(itemId, sanitizeExpenseItem(updatedItem, "draft"));
+    notify({
+      type: "success",
+      title: "Draft item updated",
+      message: `${getExpenseLabel(updatedItem)} was updated.`,
+    });
+    return true;
   }
 
   async function handleAdjustBalance(payload) {
@@ -305,15 +428,20 @@ function AddTodayPage() {
 
           {activePeriod && selectedType && (
             <ExpenseEntryForm
+              key={`${activePeriod}-${selectedType}`}
               activePeriod={activePeriod}
               selectedType={selectedType}
               onAddItem={handleAddItem}
+              onAfterAdd={() => setSelectedType("")}
+              initialPaymentType={preferredPaymentType}
+              onPaymentTypeChange={setPreferredPaymentType}
               disabled={!canEdit}
             />
           )}
 
           <ExpenseDraftList
             draftItems={draftItems}
+            onUpdateItem={handleUpdateDraftItem}
             onDeleteItem={deleteDraftItem}
             onClearAll={handleClearDraft}
             disabled={!canEdit}
@@ -334,19 +462,24 @@ function AddTodayPage() {
         <div className="right-column">
           <TodaySummaryCard
             savedTodayTotal={dailyTotal.total}
-            currentTransactionTotal={currentTransactionTotal}
-            currentTransactionCashTotal={currentTransactionCashTotal}
-            currentTransactionGPayTotal={currentTransactionGPayTotal}
+            savedTodayCashTotal={dailyTotal.cashTotal}
+            savedTodayGPayTotal={dailyTotal.gpayTotal}
           />
 
-          <TodayOverviewTable items={overviewItems} />
+          <TodayOverviewTable items={savedTodayItems} />
         </div>
       </div>
 
       <ConfirmModal
         isOpen={isConfirmOpen}
         title="Save Expenses"
-        message="Are you sure you want to save these expense items?"
+        message={`Submit ${draftItems.length} item${
+          draftItems.length === 1 ? "" : "s"
+        }?\nTotal: ${formatCurrency(
+          currentTransactionTotal
+        )}\nCash: ${formatCurrency(
+          currentTransactionCashTotal
+        )}\nGPay: ${formatCurrency(currentTransactionGPayTotal)}`}
         confirmText="Yes, Save"
         cancelText="No"
         loading={submitLoading}

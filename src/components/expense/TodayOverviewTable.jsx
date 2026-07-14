@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { DetailModal } from "../common/ConfirmModal";
 import EmptyState from "../common/EmptyState";
 import { EXPENSE_TYPES, PERIODS } from "../../utils/constants";
@@ -41,19 +41,6 @@ function TodayOverviewTable({ items = [] }) {
 
     return columns;
   }, [periodFilter, typeFilter]);
-
-  useEffect(() => {
-    const sortKeyStillVisible = visibleColumns.some(
-      (column) => column.key === sortConfig.key
-    );
-
-    if (!sortKeyStillVisible) {
-      setSortConfig({
-        key: "index",
-        direction: "asc",
-      });
-    }
-  }, [visibleColumns, sortConfig.key]);
 
   const filteredAndSortedItems = useMemo(() => {
     const filteredItems = items
@@ -140,7 +127,13 @@ function TodayOverviewTable({ items = [] }) {
         <div className="today-overview-filters">
           <select
             value={periodFilter}
-            onChange={(event) => setPeriodFilter(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setPeriodFilter(value);
+              if (value !== "all" && sortConfig.key === "period") {
+                setSortConfig({ key: "index", direction: "asc" });
+              }
+            }}
           >
             <option value="all">All Periods</option>
             {PERIODS.map((period) => (
@@ -152,7 +145,13 @@ function TodayOverviewTable({ items = [] }) {
 
           <select
             value={typeFilter}
-            onChange={(event) => setTypeFilter(event.target.value)}
+            onChange={(event) => {
+              const value = event.target.value;
+              setTypeFilter(value);
+              if (value !== "all" && sortConfig.key === "type") {
+                setSortConfig({ key: "index", direction: "asc" });
+              }
+            }}
           >
             <option value="all">All Types</option>
             {EXPENSE_TYPES.map((type) => (
@@ -167,7 +166,7 @@ function TodayOverviewTable({ items = [] }) {
       {items.length === 0 ? (
         <EmptyState
           title="No expenses today"
-          message="Saved and current draft expenses will appear here."
+          message="Submitted expenses will appear here."
         />
       ) : filteredAndSortedItems.length === 0 ? (
         <EmptyState
@@ -294,10 +293,18 @@ function TodayOverviewTable({ items = [] }) {
             ? [
                 {
                   label: "Status",
-                  value: selectedItem.isDraft ? "Draft" : "Saved",
+                  value: "Submitted",
                 },
                 { label: "Period", value: selectedItem.period || "-" },
                 { label: "Type", value: selectedItem.type || "-" },
+                ...(selectedItem.type === "custom"
+                  ? [
+                      {
+                        label: "Custom Category",
+                        value: selectedItem.customCategory || "-",
+                      },
+                    ]
+                  : []),
                 { label: "Name / Description", value: selectedItem.nameText },
                 { label: "Payment", value: selectedItem.paymentType || "-" },
                 { label: "Price", value: formatCurrency(selectedItem.price) },

@@ -9,7 +9,7 @@ import {
   setDoc,
   where,
 } from "firebase/firestore";
-import { BALANCE_ACTIONS } from "../utils/constants";
+import { BALANCE_ACTIONS, PERIODS } from "../utils/constants";
 import {
   reconcileCashBalance,
   reconcileGPayBalance,
@@ -21,6 +21,13 @@ import {
   toNumber,
 } from "../utils/totalUtils";
 import { assertClientEditAccess } from "../utils/editSession";
+import { getTodayDate } from "../utils/dateUtils";
+import {
+  getExpenseLabel,
+  normalizeText,
+  sanitizeExpenseItem,
+  validateExpenseItem,
+} from "../utils/expenseWorkflow";
 import { db } from "./firebaseConfig";
 import {
   getUserCollection,
@@ -33,6 +40,8 @@ import {
 } from "./reportStatsService";
 
 const BALANCE_MODEL_VERSION = 2;
+const EXPENSE_TEMPLATE_TYPES = ["food", "snacks", "bus", "custom"];
+const EXPENSE_TEMPLATE_PERIODS = PERIODS.map((period) => period.value);
 
 export function subscribeToExpenseTemplates(callback, errorCallback) {
   return onSnapshot(
@@ -57,9 +66,11 @@ export function subscribeToExpenseTemplates(callback, errorCallback) {
 
 export async function saveExpenseTemplate({
   id,
+  period,
   type,
   name,
   description,
+  customCategory,
   price,
   paymentType,
 }) {
@@ -69,9 +80,15 @@ export async function saveExpenseTemplate({
   const cleanDescription =
     type === "bus" ? String(description || "").trim() : "";
   const templateLabel = type === "bus" ? cleanDescription : cleanName;
+  const cleanCustomCategory =
+    type === "custom" ? normalizeText(customCategory) : "";
   const priceNumber = toNumber(price);
 
-  if (!["food", "snacks", "bus", "custom"].includes(type)) {
+  if (!EXPENSE_TEMPLATE_PERIODS.includes(period)) {
+    throw new Error("Template period is invalid.");
+  }
+
+  if (!EXPENSE_TEMPLATE_TYPES.includes(type)) {
     throw new Error("Template expense type is invalid.");
   }
 
@@ -87,6 +104,23 @@ export async function saveExpenseTemplate({
     throw new Error("Template payment type is invalid.");
   }
 
+  const existingTemplatesSnapshot = await getDocs(
+    query(getUserCollection("expenseTemplates"), where("type", "==", type))
+  );
+  const normalizedLabel = templateLabel.toLowerCase();
+  const duplicateTemplate = existingTemplatesSnapshot.docs.find(
+    (templateDoc) =>
+      templateDoc.id !== id &&
+      templateDoc.data().period === period &&
+      getExpenseLabel(templateDoc.data()).toLowerCase() === normalizedLabel
+  );
+
+  if (duplicateTemplate) {
+    throw new Error(
+      "A template with this name already exists for this period and type."
+    );
+  }
+
   const templateRef = id
     ? getUserDocument("expenseTemplates", id)
     : doc(getUserCollection("expenseTemplates"));
@@ -94,9 +128,11 @@ export async function saveExpenseTemplate({
   await setDoc(
     templateRef,
     {
+      period,
       type,
       name: cleanName,
       description: cleanDescription,
+      customCategory: cleanCustomCategory,
       price: priceNumber,
       paymentType,
       ...(id ? {} : { createdAt: serverTimestamp() }),
@@ -113,6 +149,88 @@ export async function deleteExpenseTemplate(templateId) {
 
   if (!templateId) throw new Error("Template ID is required.");
   await deleteDoc(getUserDocument("expenseTemplates", templateId));
+}
+
+export function subscribeToExpenseRecommendations(callback, errorCallback) {
+  return onSnapshot(
+    getUserCollection("expenseRecommendations"),
+    (snapshot) => {
+      const recommendations = snapshot.docs
+        .map((recommendationDoc) => ({
+          id: recommendationDoc.id,
+          ...recommendationDoc.data(),
+        }))
+        .sort(
+          (a, b) =>
+            String(a.type || "").localeCompare(String(b.type || "")) ||
+            String(a.label || "").localeCompare(String(b.label || ""), undefined, {
+              sensitivity: "base",
+            })
+        );
+
+      callback(recommendations);
+    },
+    errorCallback
+  );
+}
+
+export async function saveExpenseRecommendation({ id, type, label }) {
+  assertClientEditAccess(requireUserId());
+
+  const cleanType = normalizeText(type).toLowerCase();
+  const cleanLabel = normalizeText(label);
+
+  if (!EXPENSE_TEMPLATE_TYPES.includes(cleanType)) {
+    throw new Error("Recommendation expense type is invalid.");
+  }
+
+  if (!cleanLabel) {
+    throw new Error("Recommendation name or description is required.");
+  }
+
+  const existingRecommendationsSnapshot = await getDocs(
+    query(
+      getUserCollection("expenseRecommendations"),
+      where("type", "==", cleanType)
+    )
+  );
+  const normalizedLabel = cleanLabel.toLowerCase();
+  const duplicateRecommendation = existingRecommendationsSnapshot.docs.find(
+    (recommendationDoc) =>
+      recommendationDoc.id !== id &&
+      normalizeText(recommendationDoc.data().label).toLowerCase() ===
+        normalizedLabel
+  );
+
+  if (duplicateRecommendation) {
+    throw new Error("This recommendation already exists for this type.");
+  }
+
+  const recommendationRef = id
+    ? getUserDocument("expenseRecommendations", id)
+    : doc(getUserCollection("expenseRecommendations"));
+
+  await setDoc(
+    recommendationRef,
+    {
+      type: cleanType,
+      label: cleanLabel,
+      ...(id ? {} : { createdAt: serverTimestamp() }),
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  return recommendationRef.id;
+}
+
+export async function deleteExpenseRecommendation(recommendationId) {
+  assertClientEditAccess(requireUserId());
+
+  if (!recommendationId) throw new Error("Recommendation ID is required.");
+  await deleteDoc(
+    getUserDocument("expenseRecommendations", recommendationId)
+  );
 }
 
 function getWalletBalances(data = {}) {
@@ -168,11 +286,14 @@ export function subscribeToExpensesByDate(date, callback, errorCallback) {
   return onSnapshot(
     expensesQuery,
     (snapshot) => {
-      const items = snapshot.docs.map((expenseDoc) => ({
-        id: expenseDoc.id,
-        ...expenseDoc.data(),
-        isDraft: false,
-      }));
+      const items = snapshot.docs
+        .map((expenseDoc) => ({
+          id: expenseDoc.id,
+          ...expenseDoc.data(),
+          status: expenseDoc.data().status || "submitted",
+          isDraft: false,
+        }))
+        .filter((item) => item.status === "submitted");
 
       const sortedItems = items.sort((a, b) => {
         const aTime = a.createdAt?.seconds || 0;
@@ -222,12 +343,22 @@ export function subscribeToDailyTotal(date, callback, errorCallback) {
 export async function submitTodayExpenses({ date, draftItems }) {
   assertClientEditAccess(requireUserId());
 
+  if (!Array.isArray(draftItems) || draftItems.length === 0) {
+    throw new Error("Add at least one valid expense before submitting.");
+  }
+
+  const cleanedDraftItems = draftItems.map((item) => {
+    const validationError = validateExpenseItem(item);
+    if (validationError) throw new Error(validationError);
+    return sanitizeExpenseItem(item, "submitted");
+  });
+
   const settingsRef = getUserDocument("settings", "app");
   const dailyTotalRef = getUserDocument("dailyTotals", date);
 
-  const currentTransactionTotal = calculateTotal(draftItems);
-  const currentTransactionCashTotal = calculateCashTotal(draftItems);
-  const currentTransactionGPayTotal = calculateGPayTotal(draftItems);
+  const currentTransactionTotal = calculateTotal(cleanedDraftItems);
+  const currentTransactionCashTotal = calculateCashTotal(cleanedDraftItems);
+  const currentTransactionGPayTotal = calculateGPayTotal(cleanedDraftItems);
   const cashHistoryRef =
     currentTransactionCashTotal > 0
       ? doc(getUserCollection("balanceHistory"))
@@ -245,7 +376,7 @@ export async function submitTodayExpenses({ date, draftItems }) {
     const preparedReportStats = await prepareReportStatsUpdate(
       transaction,
       [],
-      draftItems
+      cleanedDraftItems
     );
 
     const settingsData = settingsSnap.exists() ? settingsSnap.data() : {};
@@ -289,7 +420,7 @@ export async function submitTodayExpenses({ date, draftItems }) {
     );
     const newTotalBalance = newCashBalance + newGPayBalance;
 
-    draftItems.forEach((item) => {
+    cleanedDraftItems.forEach((item) => {
       const expenseRef = doc(getUserCollection("expenses"));
 
       transaction.set(expenseRef, {
@@ -298,8 +429,11 @@ export async function submitTodayExpenses({ date, draftItems }) {
         type: item.type,
         name: item.name || "",
         description: item.description || "",
+        customCategory: item.customCategory || "",
         price: toNumber(item.price),
         paymentType: item.paymentType,
+        status: "submitted",
+        submittedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
@@ -385,6 +519,10 @@ export async function submitTodayExpenses({ date, draftItems }) {
 export async function updateExpensesForDate({ date, items }) {
   assertClientEditAccess(requireUserId());
 
+  if (!date || date > getTodayDate()) {
+    throw new Error("Expenses cannot be edited for a future date.");
+  }
+
   const expensesQuery = query(
     getUserCollection("expenses"),
     where("date", "==", date)
@@ -394,16 +532,17 @@ export async function updateExpensesForDate({ date, items }) {
   const existingItems = existingSnapshot.docs.map((expenseDoc) =>
     expenseDoc.data()
   );
-  const cleanedItems = items.map((item) => ({
-    period: item.period,
-    type: item.type,
-    name: item.type === "bus" ? "" : item.name || "",
-    description: item.type === "bus" ? item.description || "" : "",
-    price: toNumber(item.price),
-    paymentType: item.paymentType,
-    createdAt: item.createdAt || serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  }));
+  const cleanedItems = items.map((item) => {
+    const validationError = validateExpenseItem(item);
+    if (validationError) throw new Error(validationError);
+
+    return {
+      ...sanitizeExpenseItem(item, "submitted"),
+      submittedAt: item.submittedAt || item.createdAt || serverTimestamp(),
+      createdAt: item.createdAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+  });
   const newTotal = calculateTotal(cleanedItems);
   const newCashTotal = calculateCashTotal(cleanedItems);
   const newGPayTotal = calculateGPayTotal(cleanedItems);
@@ -567,10 +706,14 @@ export async function updateExpensesForDate({ date, items }) {
 export async function getAllExpenses() {
   const snapshot = await getDocs(getUserCollection("expenses"));
 
-  const items = snapshot.docs.map((expenseDoc) => ({
-    id: expenseDoc.id,
-    ...expenseDoc.data(),
-  }));
+  const items = snapshot.docs
+    .map((expenseDoc) => ({
+      id: expenseDoc.id,
+      ...expenseDoc.data(),
+      status: expenseDoc.data().status || "submitted",
+      isDraft: false,
+    }))
+    .filter((item) => item.status === "submitted");
 
   return items.sort((a, b) => {
     if (a.date === b.date) {

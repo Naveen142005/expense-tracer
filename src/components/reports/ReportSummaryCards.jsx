@@ -332,6 +332,14 @@ function compareDetailItems(first, second, key) {
 
 function SortablePeriodDetails({ period }) {
   const [sortConfig, setSortConfig] = useState(null);
+  const periodTotal = useMemo(
+    () =>
+      period.items.reduce(
+        (total, item) => total + toNumber(item.price),
+        0
+      ),
+    [period.items]
+  );
 
   const sortedItems = useMemo(() => {
     if (!sortConfig) return period.items;
@@ -388,8 +396,12 @@ function SortablePeriodDetails({ period }) {
     <section className="analytics-detail-period">
       <div className="analytics-detail-period__heading">
         <h4>{period.label}</h4>
-        <span>
-          {period.items.length} {period.items.length === 1 ? "item" : "items"}
+        <span className="analytics-detail-period__summary">
+          <span>
+            {period.items.length} {period.items.length === 1 ? "item" : "items"}
+          </span>
+          <span aria-hidden="true">·</span>
+          <strong>{formatCurrency(periodTotal)}</strong>
         </span>
       </div>
 

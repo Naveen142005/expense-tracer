@@ -1,7 +1,13 @@
 import Button from "../common/Button";
 import Input from "../common/Input";
 
-function DateSelector({ selectedDate, onDateChange, onShowData, loading }) {
+function DateSelector({
+  selectedDate,
+  onDateChange,
+  onShowData,
+  maxDate,
+  loading,
+}) {
   function handleSubmit(event) {
     event.preventDefault();
     onShowData();
@@ -18,6 +24,7 @@ function DateSelector({ selectedDate, onDateChange, onShowData, loading }) {
           type="date"
           value={selectedDate}
           onChange={(event) => onDateChange(event.target.value)}
+          max={maxDate}
           required
           disabled={loading}
         />

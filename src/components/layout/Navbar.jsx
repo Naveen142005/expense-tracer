@@ -4,6 +4,19 @@ import { useAuth } from "../../context/AuthContext";
 import { useEditLock } from "../../context/EditLockContext";
 import { useFeedback } from "../../context/FeedbackContext";
 import { useTheme } from "../../hooks/useTheme";
+import { getTodayDate } from "../../utils/dateUtils";
+
+function hasUnsavedTodayDraft() {
+  try {
+    const savedDraft = localStorage.getItem(
+      `expense_tracker_draft_${getTodayDate()}`
+    );
+    const parsedDraft = JSON.parse(savedDraft || "[]");
+    return Array.isArray(parsedDraft) && parsedDraft.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 function Navbar() {
   const { theme, toggleTheme } = useTheme();
@@ -21,6 +34,15 @@ function Navbar() {
   const [logoutLoading, setLogoutLoading] = useState(false);
 
   async function handleLogout() {
+    if (
+      hasUnsavedTodayDraft() &&
+      !window.confirm(
+        "You have unsaved draft items. Log out without submitting them?"
+      )
+    ) {
+      return;
+    }
+
     try {
       setLogoutLoading(true);
       prepareForLogout();
