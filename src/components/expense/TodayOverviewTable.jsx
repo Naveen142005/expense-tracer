@@ -297,14 +297,6 @@ function TodayOverviewTable({ items = [] }) {
                 },
                 { label: "Period", value: selectedItem.period || "-" },
                 { label: "Type", value: selectedItem.type || "-" },
-                ...(selectedItem.type === "custom"
-                  ? [
-                      {
-                        label: "Custom Category",
-                        value: selectedItem.customCategory || "-",
-                      },
-                    ]
-                  : []),
                 { label: "Name / Description", value: selectedItem.nameText },
                 { label: "Payment", value: selectedItem.paymentType || "-" },
                 { label: "Price", value: formatCurrency(selectedItem.price) },

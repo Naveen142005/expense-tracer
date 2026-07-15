@@ -35,7 +35,7 @@ function ToastViewport({ toasts, onDismiss }) {
             onClick={() => onDismiss(toast.id)}
             aria-label="Dismiss notification"
           >
-            x
+            ×
           </button>
         </div>
       ))}

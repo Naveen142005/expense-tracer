@@ -43,6 +43,13 @@ function detectTypeFilter(text) {
     return TYPE_ALIASES[RegExp.$1] || "all";
   }
 
+  for (const [alias, type] of Object.entries(TYPE_ALIASES).sort((a, b) => b[0].length - a[0].length)) {
+    const word = alias.replace(/\s+/g, "\\s+");
+    if (new RegExp(`\\b(?:on|for|only|type|category|spent on|spending on)\\s+(?:${word})\\b|\\b(?:${word})\\s+(?:expense|expenses|spend|spent|spending|total|cost|amount)\\b`).test(text)) {
+      return type;
+    }
+  }
+
   return "all";
 }
 
@@ -55,12 +62,20 @@ function detectPaymentFilter(text) {
   const filterPatterns = [
     /\b(?:using|by|through|via|with|paid by|paid through|paid using|payment by|payment through)\s+(cash|gpay|g pay|google pay|upi)\b/,
     /\b(cash|gpay|g pay|google pay|upi)\s+(?:only|payment only|payments only|expenses only|transactions only)\b/,
+    /\b(cash|gpay|g pay|google pay|upi)\s+(?:expenses|transactions|entries|purchases)\b/,
     /\bonly\s+(cash|gpay|g pay|google pay|upi)\b/,
   ];
 
   for (const pattern of filterPatterns) {
     const match = text.match(pattern);
     if (match) return PAYMENT_ALIASES[match[1]] || "all";
+  }
+
+  for (const [alias, payment] of Object.entries(PAYMENT_ALIASES).sort((a, b) => b[0].length - a[0].length)) {
+    const word = alias.replace(/\s+/g, "\\s+");
+    if (new RegExp(`\\b(?:using|by|through|via|with|paid by|paid through|paid using)\\s+(?:${word})\\b|\\bonly\\s+(?:${word})\\b|\\b(?:${word})\\s+(?:only|expenses only|transactions only)\\b`).test(text)) {
+      return payment;
+    }
   }
 
   return "all";
@@ -123,7 +138,7 @@ function detectMetrics(message) {
 
 function detectRankDimension(message) {
   const text = normalizeMessage(message);
-  if (/\b(day|date|daily)\b/.test(text)) return "date";
+  if (/\b(day|days|date|dates|daily)\b/.test(text)) return "date";
   if (/\bperiod|morning|afternoon|evening|night\b/.test(text)) return "period";
   if (/\bpayment|cash|gpay|upi\b/.test(text)) return "payment";
   if (/\btype|category|categories|food|snacks|bus|custom\b/.test(text)) return "type";
@@ -271,7 +286,6 @@ function isMultiMetricSummary(metrics) {
     "paymentBreakdown",
     "periodBreakdown",
     "dateBreakdown",
-    "advice",
     "average",
     "count",
     "itemList",
@@ -285,8 +299,19 @@ function classifyIntent(message, metrics, focusItem) {
   if (metrics.has("balanceAdded")) return "balance-added";
   if (metrics.has("balanceReduced")) return "balance-reduced";
   if (metrics.has("compare")) return "compare";
-  if (metrics.has("lowest") && !isMultiMetricSummary(metrics)) return `lowest-${detectRankDimension(message)}`;
-  if (metrics.has("top") && !isMultiMetricSummary(metrics)) return `top-${detectRankDimension(message)}`;
+  const rankDimension = detectRankDimension(message);
+  const matchingBreakdown = {
+    date: "dateBreakdown",
+    period: "periodBreakdown",
+    payment: "paymentBreakdown",
+    type: "typeBreakdown",
+    item: null,
+  }[rankDimension];
+  const rankHasExtraMetrics = [...metrics].some(
+    (metric) => !["lowest", "top", "totalSpend", matchingBreakdown].includes(metric)
+  );
+  if (metrics.has("lowest") && !rankHasExtraMetrics) return `lowest-${rankDimension}`;
+  if (metrics.has("top") && !rankHasExtraMetrics) return `top-${rankDimension}`;
   if (metrics.has("advice") && !isMultiMetricSummary(metrics)) return "advice";
   if (metrics.has("itemList")) return "item-list";
   if (metrics.has("recent")) return "recent";

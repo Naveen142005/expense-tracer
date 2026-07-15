@@ -69,12 +69,40 @@ function ConfirmModal({
   onConfirm,
   onCancel,
 }) {
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && !loading) onCancel();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen, loading, onCancel]);
+
   if (!isOpen) return null;
 
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-card">
-        <h3>{title}</h3>
+  return createPortal(
+    <div
+      className="modal-backdrop transaction-confirm-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !loading) onCancel();
+      }}
+    >
+      <div
+        className="modal-card transaction-confirm-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="transaction-confirm-title"
+      >
+        <h3 id="transaction-confirm-title">{title}</h3>
         <p>{message}</p>
 
         <div className="modal-actions">
@@ -87,7 +115,8 @@ function ConfirmModal({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

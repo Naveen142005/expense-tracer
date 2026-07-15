@@ -33,6 +33,28 @@ Use these tests after running `set -a && source .env.local && set +a && vercel d
 - Compare idly vs egg.
 - Cash spend and GPay spend for June 2026.
 
+## Dimension safety
+- Compare Food and Bus spending this month.
+- Compare Cash vs GPay this month.
+- Compare Morning vs Night spending.
+- Compare Food vs Other type.
+- Compare Morning vs Other period.
+- How much was Food spending this month?
+
+## Open-ended analytics
+- What was the highest price I paid for idly?
+- Which items are becoming more expensive month by month?
+- Which weekday has my highest average spending?
+- Show food purchases above ₹20 paid with GPay at night.
+- Which five items did I buy most frequently, and how much did each cost in total?
+- Compare idly and dosa by count, then compare them by amount.
+- How many unique items did I purchase this year?
+- List my latest 15 bus expenses.
+- Compare June 2026 with July 2026.
+- What was my Cash and GPay balance on 1 July 2026?
+- Show balance added and reduced last quarter.
+- Find my highest-spending type and give practical saving advice.
+
 ## Clarification / blocked
 - how much did I spend there?
 - compare both
@@ -46,3 +68,4 @@ Expected behavior:
 - Unclear questions ask clarification.
 - New date phrases override old chat context.
 - Lifetime/ranking questions use all-time data when no date is specified.
+- Type, payment, period, and item comparisons remain separate even if the language model returns the wrong dimension.

@@ -26,7 +26,6 @@ function DraftItem({ item, onUpdateItem, onDeleteItem, disabled }) {
           type: value,
           description: current.description || current.name || "",
           name: "",
-          customCategory: "",
         };
       }
 
@@ -35,8 +34,7 @@ function DraftItem({ item, onUpdateItem, onDeleteItem, disabled }) {
         type: value,
         name: current.name || current.description || "",
         description: "",
-        customCategory:
-          value === "custom" ? current.customCategory || "" : "",
+        customCategory: "",
       };
     });
   }
@@ -84,22 +82,12 @@ function DraftItem({ item, onUpdateItem, onDeleteItem, disabled }) {
             </select>
           </label>
 
-          {draft.type === "custom" && (
-            <label>
-              <span>Custom Category</span>
-              <input
-                value={draft.customCategory || ""}
-                onChange={(event) =>
-                  handleChange("customCategory", event.target.value)
-                }
-                placeholder="Example: Medicine"
-                disabled={disabled}
-              />
-            </label>
-          )}
-
           <label>
-            <span>{draft.type === "bus" ? "Description" : "Item Name"}</span>
+            <span>
+              {draft.type === "bus" || draft.type === "custom"
+                ? "Description"
+                : "Item Name"}
+            </span>
             <input
               value={textValue || ""}
               onChange={(event) => handleChange(textField, event.target.value)}
@@ -161,9 +149,6 @@ function DraftItem({ item, onUpdateItem, onDeleteItem, disabled }) {
         <strong>{item.name || item.description || "-"}</strong>
         <p>
           {item.period} • {item.type}
-          {item.type === "custom" && item.customCategory
-            ? ` (${item.customCategory})`
-            : ""}
           {` • ${item.paymentType}`}
         </p>
       </div>

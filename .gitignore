@@ -5,3 +5,7 @@ dist
 .env.production
 serviceAccountKey.json
 .DS_Store
+.vercel
+.vercel/*
+.vercel/.env.development.local
+.vercel/

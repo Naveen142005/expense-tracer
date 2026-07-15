@@ -57,7 +57,6 @@ function EditableExpenseTable({
               <tr>
                 <th>Period</th>
                 <th>Type</th>
-                <th>Custom Category</th>
                 <th>Name / Description</th>
                 <th>Payment</th>
                 <th>Price</th>
@@ -98,26 +97,6 @@ function EditableExpenseTable({
                     </td>
 
                     <td>
-                      {item.type === "custom" ? (
-                        <input
-                          type="text"
-                          value={item.customCategory || ""}
-                          placeholder="Required"
-                          disabled={disabled}
-                          onChange={(event) =>
-                            onChangeItem(
-                              item.id,
-                              "customCategory",
-                              event.target.value
-                            )
-                          }
-                        />
-                      ) : (
-                        <span>-</span>
-                      )}
-                    </td>
-
-                    <td>
                       <select
                         value={item.type}
                         disabled={disabled}
@@ -139,7 +118,7 @@ function EditableExpenseTable({
                         value={textValue}
                         list={suggestionList}
                         placeholder={
-                          item.type === "bus"
+                          item.type === "bus" || item.type === "custom"
                             ? "Optional description"
                             : "Required"
                         }

@@ -328,7 +328,7 @@ function buildRecentReply(summary) {
 
 function buildAverageReply(summary) {
   if (!summary.count) return `I couldn't find any expense records for **${summary.range.label}**.`;
-  let days = 1;
+  let days;
   if (summary.range.source === "all-time") {
     days = Math.max(1, Object.keys(summary.byDate).filter((date) => date !== "unknown").length);
   } else {
@@ -352,8 +352,7 @@ function valueForTarget(summary, target) {
   if (target.dimension === "payment") return summary.byPaymentType[target.key] || 0;
   if (target.dimension === "period") return summary.byPeriod[target.key] || 0;
   if (target.dimension === "item") {
-    const item = summary.topItems.find((entry) => entry.key === target.key);
-    return item?.amount || 0;
+    return summary.itemTotals?.[target.key]?.amount || 0;
   }
   return 0;
 }

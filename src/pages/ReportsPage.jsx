@@ -473,11 +473,18 @@ function ReportsPage() {
 
           <button
             type="button"
-            className="reports-action-btn reports-action-btn--primary"
+            className={`reports-action-btn reports-action-btn--primary reports-refresh-btn${
+              refreshing ? " reports-refresh-btn--loading" : ""
+            }`}
             onClick={() => loadReports({ background: true })}
             disabled={refreshing}
           >
-            {refreshing ? "Refreshing..." : "Refresh"}
+            <span className="reports-refresh-btn__icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M20 7V3m0 0h-4m4 0-3.1 3.1A7 7 0 1 0 19 16" />
+              </svg>
+            </span>
+            <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
           </button>
         </div>
       </header>
@@ -520,7 +527,7 @@ function ReportsPage() {
             : "reports-right-panel"
         }
         aria-hidden={!isMobileFilterOpen}
-        inert={isMobileFilterOpen ? undefined : ""}
+        inert={!isMobileFilterOpen}
       >
         <div className="reports-filter-mobile-header">
           <div>

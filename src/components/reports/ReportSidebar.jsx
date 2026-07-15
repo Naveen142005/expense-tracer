@@ -103,7 +103,6 @@ function ReportSidebar({ activeReport, onChange }) {
           <span>Report views</span>
           <h3>Choose your workspace</h3>
         </div>
-        <p>Everything stays full-width and focused.</p>
       </div>
       <nav className="report-view-switcher__options">
         <ReportViewButtons activeReport={activeReport} onChange={onChange} />

@@ -21,8 +21,7 @@ export function sanitizeExpenseItem(item = {}, status = item.status) {
     type,
     name: type === "bus" ? "" : normalizeText(item.name),
     description: type === "bus" ? normalizeText(item.description) : "",
-    customCategory:
-      type === "custom" ? normalizeText(item.customCategory) : "",
+    customCategory: "",
     price: Number(item.price),
     paymentType: normalizeText(item.paymentType).toLowerCase(),
   };
@@ -56,10 +55,6 @@ export function validateExpenseItem(item = {}) {
 
   if (cleanItem.type !== "bus" && !cleanItem.name) {
     return "Enter an item name.";
-  }
-
-  if (cleanItem.type === "custom" && !cleanItem.customCategory) {
-    return "Enter a custom category.";
   }
 
   return "";

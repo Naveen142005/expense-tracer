@@ -1,12 +1,17 @@
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   getAdditionalUserInfo,
   GoogleAuthProvider,
   onAuthStateChanged,
+  reauthenticateWithCredential,
+  reload,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
+  updateEmail,
+  updatePassword,
   updateProfile,
 } from "firebase/auth";
 import { doc, serverTimestamp, setDoc } from "firebase/firestore";
@@ -80,6 +85,42 @@ export function resetUserPassword(email) {
   return sendPasswordResetEmail(auth, email.trim().toLowerCase());
 }
 
+export async function updateUserDisplayName(name) {
+  if (!auth.currentUser) throw new Error("You must be logged in.");
+  await updateProfile(auth.currentUser, { displayName: name.trim() });
+  await reload(auth.currentUser);
+  return auth.currentUser;
+}
+
+async function reauthenticatePasswordUser(currentPassword) {
+  const user = auth.currentUser;
+  if (!user?.email) throw new Error("Your account email is unavailable.");
+  if (!currentPassword) throw new Error("Enter your current password.");
+
+  const credential = EmailAuthProvider.credential(user.email, currentPassword);
+  await reauthenticateWithCredential(user, credential);
+  return user;
+}
+
+export async function changeUserEmail({ email, currentPassword }) {
+  const user = await reauthenticatePasswordUser(currentPassword);
+  const normalizedEmail = email.trim().toLowerCase();
+  await updateEmail(user, normalizedEmail);
+  await setDoc(
+    doc(db, "users", user.uid),
+    { email: normalizedEmail, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+  await reload(user);
+  return user;
+}
+
+export async function changeUserPassword({ currentPassword, newPassword }) {
+  const user = await reauthenticatePasswordUser(currentPassword);
+  await updatePassword(user, newPassword);
+  await reload(user);
+}
+
 export function getAuthErrorMessage(error) {
   const messages = {
     "auth/email-already-in-use": "An account already exists with this email.",
@@ -93,6 +134,9 @@ export function getAuthErrorMessage(error) {
     "auth/too-many-requests": "Too many attempts. Please try again later.",
     "auth/user-disabled": "This account has been disabled.",
     "auth/weak-password": "Use a stronger password with at least 6 characters.",
+    "auth/requires-recent-login":
+      "For security, sign in again before changing this information.",
+    "auth/wrong-password": "Your current password is incorrect.",
   };
 
   return messages[error?.code] || "Something went wrong. Please try again.";

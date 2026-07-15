@@ -5,6 +5,7 @@ import AddTodayPage from "../pages/AddTodayPage";
 import EditPage from "../pages/EditPage";
 import ForgotPasswordPage from "../pages/ForgotPasswordPage";
 import LoginPage from "../pages/LoginPage";
+import ProfilePage from "../pages/ProfilePage";
 import ReportsPage from "../pages/ReportsPage";
 import SignupPage from "../pages/SignupPage";
 
@@ -22,6 +23,7 @@ function AppRouter() {
           <Route path="/" element={<AddTodayPage />} />
           <Route path="/edit" element={<EditPage />} />
           <Route path="/reports" element={<ReportsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Route>
       </Route>
 

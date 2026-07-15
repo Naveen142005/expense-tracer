@@ -18,20 +18,20 @@ const validExpense = {
   paymentType: "cash",
 };
 
-test("validates required expense fields and custom category", () => {
+test("validates required expense fields without a redundant custom category", () => {
   assert.equal(validateExpenseItem(validExpense), "");
   assert.match(
     validateExpenseItem({ ...validExpense, price: 0 }),
     /greater than zero/
   );
-  assert.match(
+  assert.equal(
     validateExpenseItem({
       ...validExpense,
       type: "custom",
       name: "Tablet",
       customCategory: "",
     }),
-    /custom category/
+    ""
   );
 });
 

@@ -1,11 +1,14 @@
 import { getAdminAuth } from "./_expenseAi/firebaseAdmin.js";
 import { buildExpenseSummary, buildBalanceHistorySummary } from "./_expenseAi/calculator.js";
 import { getDomainDecision, genericReply, outOfDomainReply } from "./_expenseAi/domainGuard.js";
-import { callLlamaForAdvice } from "./_expenseAi/llamaClient.js";
+import { callLlamaForAdvice, callLlamaForQueryPlan } from "./_expenseAi/llamaClient.js";
 import { buildClarification, buildNextContext, buildQueryPlan, needsClarification } from "./_expenseAi/queryPlanner.js";
-import { fetchBalanceHistory, fetchCurrentBalance, fetchExpenses } from "./_expenseAi/repositories.js";
+import { fetchAllExpenseItemNames, fetchBalanceHistory, fetchCurrentBalance, fetchExpenses } from "./_expenseAi/repositories.js";
 import { buildBalanceHistoryReply, buildBalanceReply, buildDeterministicReply, compactSummaryForLlama } from "./_expenseAi/responseBuilder.js";
-import { getExpenseName } from "./_expenseAi/utils.js";
+import { getKolkataTodayParts } from "./_expenseAi/utils.js";
+import { buildNextSemanticContext, normalizeSemanticPlan } from "./_expenseAi/semanticPlanner.js";
+import { executeSemanticPlan, semanticResultForAdvice } from "./_expenseAi/semanticQueryEngine.js";
+import { buildSemanticReply } from "./_expenseAi/semanticResponseBuilder.js";
 
 function sendCorsHeaders(req, res) {
   const allowedOrigin = process.env.CLIENT_URL || req.headers.origin || "*";
@@ -38,7 +41,7 @@ export default async function handler(req, res) {
 
   try {
     const body = parseBody(req);
-    const message = String(body.message || "").trim();
+    const message = String(body.message || "").trim().slice(0, 2000);
     if (!message) return res.status(400).json({ error: "Message is required." });
 
     const token = getAuthToken(req);
@@ -68,8 +71,108 @@ export default async function handler(req, res) {
     const decodedToken = await getAdminAuth().verifyIdToken(token);
     const uid = decodedToken.uid;
 
-    // First plan without item names. This handles dates/balance/domain without reading all expense records.
-    let plan = buildQueryPlan(message, context, []);
+    const history = Array.isArray(body.history)
+      ? body.history.slice(-6).map((entry) => ({
+          role: entry?.role === "ai" ? "assistant" : "user",
+          text: String(entry?.text || "").slice(0, 1000),
+        }))
+      : [];
+
+    let semanticPlannerFailed = false;
+    let knownItemNames = [];
+    try {
+      knownItemNames = await fetchAllExpenseItemNames(uid);
+      const rawSemanticPlan = await callLlamaForQueryPlan({
+        question: message,
+        today: getKolkataTodayParts().dateString,
+        knownItemNames,
+        context,
+        history,
+      });
+
+      if (rawSemanticPlan) {
+        const semanticPlan = normalizeSemanticPlan(rawSemanticPlan, {
+          question: message,
+          knownItemNames,
+          context,
+        });
+
+        if (semanticPlan.domain === "out-of-domain") {
+          return res.status(200).json({
+            reply: outOfDomainReply(),
+            summary: { intent: "out-of-domain", engine: semanticPlan.engine },
+            context: { ...context, lastIntent: "out-of-domain" },
+            usedFallback: false,
+          });
+        }
+
+        if (semanticPlan.domain === "clarify" || semanticPlan.clarification) {
+          return res.status(200).json({
+            reply: semanticPlan.clarification || "Please clarify what expense or balance information you want me to analyse.",
+            summary: { intent: "clarification-needed", engine: semanticPlan.engine, confidence: semanticPlan.confidence },
+            context,
+            usedFallback: false,
+          });
+        }
+
+        const needsExpenses = semanticPlan.operations.some((operation) => !operation.kind.startsWith("balance-") && operation.kind !== "advice")
+          || semanticPlan.wantsAdvice;
+        const needsBalance = semanticPlan.operations.some((operation) => operation.kind.startsWith("balance-"));
+        const needsBalanceHistory = semanticPlan.operations.some((operation) => ["balance-history", "balance-at-date"].includes(operation.kind));
+
+        const [expenses, balanceHistory, currentBalance] = await Promise.all([
+          needsExpenses ? fetchExpenses(uid, semanticPlan.dateRange) : Promise.resolve([]),
+          needsBalanceHistory ? fetchBalanceHistory(uid) : Promise.resolve([]),
+          needsBalance ? fetchCurrentBalance(uid) : Promise.resolve(null),
+        ]);
+
+        const semanticResult = executeSemanticPlan({
+          expenses,
+          balanceHistory,
+          currentBalance,
+          plan: semanticPlan,
+        });
+        let reply = buildSemanticReply(semanticResult, semanticPlan);
+        let usedFallback = false;
+
+        if (semanticPlan.wantsAdvice && semanticResult.baseStats.count > 0) {
+          try {
+            const aiAdvice = await callLlamaForAdvice({
+              question: message,
+              calculatedSummary: semanticResultForAdvice(semanticResult),
+            });
+            if (aiAdvice) reply = `${reply}\n\n### AI advice\n${aiAdvice}`;
+          } catch (error) {
+            usedFallback = true;
+            console.error("Llama advice failed:", error);
+          }
+        }
+
+        return res.status(200).json({
+          reply,
+          summary: semanticResult,
+          plan: semanticPlan,
+          context: buildNextSemanticContext(semanticPlan, semanticResult),
+          usedFallback,
+        });
+      }
+      semanticPlannerFailed = true;
+    } catch (error) {
+      semanticPlannerFailed = true;
+      console.error("Semantic query planner failed; using deterministic fallback:", error);
+    }
+
+    if (domain.kind === "candidate") {
+      return res.status(200).json({
+        reply: "I couldn't confidently connect that question to your expense or balance data. Please mention the item, date, amount, payment method, period, type, balance, or comparison you want to analyse.",
+        summary: { intent: "clarification-needed", reason: "semantic-planner-unavailable" },
+        context,
+        usedFallback: true,
+      });
+    }
+
+    // Safe fallback when the semantic model is unavailable.
+    const plan = buildQueryPlan(message, context, knownItemNames);
 
     if (plan.intent === "current-balance") {
       const balance = await fetchCurrentBalance(uid);
@@ -77,7 +180,7 @@ export default async function handler(req, res) {
         reply: buildBalanceReply(balance),
         summary: { intent: plan.intent, balance },
         context: buildNextContext(plan, null),
-        usedFallback: false,
+        usedFallback: semanticPlannerFailed,
       });
     }
 
@@ -88,13 +191,10 @@ export default async function handler(req, res) {
         reply: buildBalanceHistoryReply(balanceSummary, plan.intent),
         summary: { intent: plan.intent, ...balanceSummary },
         context: buildNextContext(plan, null),
-        usedFallback: false,
+        usedFallback: semanticPlannerFailed,
       });
     }
 
-    const expenses = await fetchExpenses(uid, plan.dateRange);
-    const knownItemNames = [...new Set(expenses.map((expense) => getExpenseName(expense)).filter(Boolean))];
-    plan = buildQueryPlan(message, context, knownItemNames);
     const clarification = needsClarification(plan, context);
 
     if (clarification.needed) {
@@ -102,13 +202,14 @@ export default async function handler(req, res) {
         reply: buildClarification(plan, clarification.reason),
         summary: { intent: "clarification-needed", reason: clarification.reason, confidence: plan.confidence },
         context: { ...context, pendingClarification: clarification.reason },
-        usedFallback: false,
+        usedFallback: semanticPlannerFailed,
       });
     }
 
+    const expenses = await fetchExpenses(uid, plan.dateRange);
     const summary = buildExpenseSummary(expenses, plan);
     let reply = buildDeterministicReply(summary, plan);
-    let usedFallback = false;
+    let usedFallback = semanticPlannerFailed;
 
     // Exact numbers always come from code. Groq is used only to improve advice wording.
     if (plan.intent === "advice" && summary.count > 0) {

@@ -19,6 +19,7 @@ import {
 } from "../../utils/expenseWorkflow";
 import { formatCurrency } from "../../utils/totalUtils";
 import Button from "../common/Button";
+import AppIcon from "../common/AppIcon";
 import Input from "../common/Input";
 import Select from "../common/Select";
 
@@ -29,7 +30,7 @@ function getOptionLabel(options, value) {
 function getLabelByType(type) {
   if (type === "food") return "Food Name";
   if (type === "snacks") return "Snack Name";
-  if (type === "bus") return "Description";
+  if (type === "bus" || type === "custom") return "Description";
   return "Item Name";
 }
 
@@ -37,6 +38,7 @@ function getPlaceholderByType(type) {
   if (type === "food") return "Example: idly";
   if (type === "snacks") return "Example: biscuit";
   if (type === "bus") return "Example: Bus to office";
+  if (type === "custom") return "Example: Medicine, recharge, notebook";
   return "Example: tablet, recharge, notebook";
 }
 
@@ -44,7 +46,6 @@ function createEmptyForm(paymentType = "cash") {
   return {
     name: "",
     description: "",
-    customCategory: "",
     price: "",
     paymentType,
   };
@@ -53,7 +54,6 @@ function createEmptyForm(paymentType = "cash") {
 function createEmptyTemplate(paymentType = "cash") {
   return {
     label: "",
-    customCategory: "",
     price: "",
     paymentType,
   };
@@ -62,10 +62,6 @@ function createEmptyTemplate(paymentType = "cash") {
 function getEntryFieldErrors(expense = {}) {
   const cleanExpense = sanitizeExpenseItem(expense);
   const errors = {};
-
-  if (cleanExpense.type === "custom" && !cleanExpense.customCategory) {
-    errors.customCategory = "Enter a custom category.";
-  }
 
   if (cleanExpense.type === "bus") {
     if (!cleanExpense.description) {
@@ -134,7 +130,6 @@ function TemplateManagerModal({
     setEditingId(template.id);
     setDraft({
       label: getExpenseLabel(template),
-      customCategory: template.customCategory || "",
       price: String(template.price ?? ""),
       paymentType: template.paymentType || "cash",
     });
@@ -151,16 +146,10 @@ function TemplateManagerModal({
   async function handleSave(event) {
     event.preventDefault();
     const label = normalizeText(draft.label);
-    const customCategory = normalizeText(draft.customCategory);
     const price = Number(draft.price);
 
     if (!label) {
       setError("Enter a template name or description.");
-      return;
-    }
-
-    if (selectedType === "custom" && !customCategory) {
-      setError("Enter a custom category for this template.");
       return;
     }
 
@@ -191,7 +180,7 @@ function TemplateManagerModal({
         type: selectedType,
         name: selectedType === "bus" ? "" : label,
         description: selectedType === "bus" ? label : "",
-        customCategory,
+        customCategory: "",
         price,
         paymentType: draft.paymentType,
       });
@@ -249,25 +238,12 @@ function TemplateManagerModal({
               <span>This preset includes the item, price, and payment type.</span>
             </div>
 
-            {selectedType === "custom" && (
-              <Input
-                label="Custom Category"
-                name="templateCustomCategory"
-                value={draft.customCategory}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    customCategory: event.target.value,
-                  }))
-                }
-                placeholder="Example: Medicine"
-                required
-                disabled={saving}
-              />
-            )}
-
             <Input
-              label={selectedType === "bus" ? "Description" : "Item Name"}
+              label={
+                selectedType === "bus" || selectedType === "custom"
+                  ? "Description"
+                  : "Item Name"
+              }
               name="templateLabel"
               value={draft.label}
               onChange={(event) =>
@@ -348,9 +324,6 @@ function TemplateManagerModal({
               <article key={template.id} className="template-manager-item">
                 <div className="template-manager-item__content">
                   <strong>{getExpenseLabel(template)}</strong>
-                  {template.type === "custom" && template.customCategory ? (
-                    <span>Category: {template.customCategory}</span>
-                  ) : null}
                   <span>
                     {formatCurrency(template.price)} ·{" "}
                     {template.paymentType === "gpay" ? "GPay" : "Cash"}
@@ -618,7 +591,6 @@ function ExpenseEntryForm({
   activePeriod,
   selectedType,
   onAddItem,
-  onAfterAdd,
   initialPaymentType = "cash",
   onPaymentTypeChange,
   disabled = false,
@@ -641,6 +613,7 @@ function ExpenseEntryForm({
   const [shakeSubmit, setShakeSubmit] = useState(false);
   const managerMenuRef = useRef(null);
   const formRef = useRef(null);
+  const itemInputRef = useRef(null);
 
   useEffect(() => {
     return subscribeToExpenseTemplates(setTemplates, (error) => {
@@ -794,7 +767,6 @@ function ExpenseEntryForm({
       name: template.type === "bus" ? "" : template.name || "",
       description:
         template.type === "bus" ? template.description || "" : "",
-      customCategory: template.customCategory || "",
       price: String(template.price ?? ""),
       paymentType: template.paymentType || "cash",
     });
@@ -836,11 +808,11 @@ function ExpenseEntryForm({
     }
 
     if (added) {
-      setForm(createEmptyForm(form.paymentType));
+      setForm((current) => createEmptyForm(current.paymentType));
       setFieldErrors({});
       setTemplateSearch("");
       setRecommendationsOpen(false);
-      onAfterAdd?.();
+      window.requestAnimationFrame(() => itemInputRef.current?.focus());
     }
   }
 
@@ -972,7 +944,8 @@ function ExpenseEntryForm({
               onClick={() => setRecommendationManagerOpen(true)}
               disabled={formDisabled}
             >
-              Manage Recommendations
+              <AppIcon name="sparkle" size={16} />
+              <span>Manage Recommendations</span>
             </button>
             <button
               type="button"
@@ -980,7 +953,8 @@ function ExpenseEntryForm({
               onClick={() => setTemplateManagerOpen(true)}
               disabled={formDisabled}
             >
-              Manage Templates
+              <AppIcon name="template" size={16} />
+              <span>Manage Templates</span>
             </button>
           </div>
           <div
@@ -1014,7 +988,7 @@ function ExpenseEntryForm({
                   }}
                 >
                   <span className="expense-entry-form__more-icon" aria-hidden="true">
-                    R
+                    <AppIcon name="sparkle" size={16} />
                   </span>
                   <span>
                     <strong>Manage Recommendations</strong>
@@ -1030,7 +1004,7 @@ function ExpenseEntryForm({
                   }}
                 >
                   <span className="expense-entry-form__more-icon" aria-hidden="true">
-                    T
+                    <AppIcon name="template" size={16} />
                   </span>
                   <span>
                     <strong>Manage Templates</strong>
@@ -1093,25 +1067,12 @@ function ExpenseEntryForm({
         </div>
 
         <div className="form-grid">
-          {selectedType === "custom" && (
-            <Input
-              label="Custom Category"
-              name="customCategory"
-              value={form.customCategory}
-              onChange={handleChange}
-              placeholder="Example: Medicine, Recharge"
-              required
-              disabled={formDisabled}
-              autoFocus
-              error={fieldErrors.customCategory}
-            />
-          )}
-
           <div className="form-field expense-recommendation-field">
             <label htmlFor="expenseItemText">
               {getLabelByType(selectedType)} <span className="required">*</span>
             </label>
             <input
+              ref={itemInputRef}
               id="expenseItemText"
               name={textField}
               className={fieldErrors[textField] ? "input input--error" : "input"}
@@ -1128,7 +1089,7 @@ function ExpenseEntryForm({
               }
               placeholder={getPlaceholderByType(selectedType)}
               autoComplete="off"
-              autoFocus={selectedType !== "custom"}
+              autoFocus
               disabled={formDisabled}
               aria-invalid={fieldErrors[textField] ? "true" : undefined}
               aria-describedby={

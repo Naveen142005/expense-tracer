@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import BalanceAdjustForm from "../components/balance/BalanceAdjustForm";
 import BalanceCard from "../components/balance/BalanceCard";
 import Button from "../components/common/Button";
+import AppIcon from "../components/common/AppIcon";
 import ConfirmModal from "../components/common/ConfirmModal";
 import Loading from "../components/common/Loading";
 import ExpenseDraftList from "../components/expense/ExpenseDraftList";
@@ -16,6 +17,7 @@ import { useBalance } from "../hooks/useBalance";
 import { useDraftExpenses } from "../hooks/useDraftExpenses";
 import { useExpenses } from "../hooks/useExpenses";
 import { getTodayDate } from "../utils/dateUtils";
+import { EXPENSE_TYPES, PERIODS } from "../utils/constants";
 import {
   getExpenseLabel,
   isRecentDuplicate,
@@ -142,6 +144,11 @@ function AddTodayPage() {
     return "";
   }, [activePeriod, selectedType]);
 
+  const activePeriodLabel =
+    PERIODS.find((period) => period.value === activePeriod)?.label || "Period";
+  const selectedTypeLabel =
+    EXPENSE_TYPES.find((type) => type.value === selectedType)?.label || "Type";
+
   async function handleAddItem(item) {
     if (!canEdit) {
       openUnlockDialog();
@@ -187,13 +194,20 @@ function AddTodayPage() {
     notify({
       type: "success",
       title: "Item added to draft",
-      message: `${getExpenseLabel(cleanItem)} · ${formatCurrency(cleanItem.price)}`,
+      message: `${getExpenseLabel(cleanItem)} · ${activePeriodLabel} · ${selectedTypeLabel} · ${
+        cleanItem.paymentType === "gpay" ? "GPay" : "Cash"
+      } · ${formatCurrency(cleanItem.price)}`,
       duration: 6000,
       actionLabel: "Undo",
       onAction: () => deleteDraftItem(cleanItem.id),
     });
 
     return true;
+  }
+
+  function handleResetEntryContext() {
+    setActivePeriod("");
+    setSelectedType("");
   }
 
   function handleUpdateDraftItem(itemId, changes) {
@@ -394,51 +408,79 @@ function AddTodayPage() {
         />
       </div>
 
-      <div className="add-today-grid">
-        <div className="left-column">
-          <div className="card selection-card selection-card--period">
-            <h3>Select Period</h3>
-            <PeriodTabs
-              activePeriod={activePeriod}
-              onChange={setActivePeriod}
-              disabled={!canEdit}
-            />
-          </div>
-
-          <div className="card selection-card selection-card--type">
-            <h3>Select Type</h3>
-            <ExpenseTypeSelector
-              selectedType={selectedType}
-              onChange={setSelectedType}
-              disabled={!canEdit}
-            />
-          </div>
-
-          {canEdit && selectionGuidance && (
-            <div className="expense-selection-guide" role="status">
-              <span className="expense-selection-guide__icon" aria-hidden="true">
-                i
-              </span>
+      <div className="add-today-layout">
+        <div className="card entry-context-card">
+            <header className="entry-context-card__header">
               <div>
-                <strong>Please Select Your Selection</strong>
-                <p>{selectionGuidance}</p>
+                <span className="entry-context-card__eyebrow">Entry context</span>
+                <h3>Choose once, add continuously</h3>
+                <p>Your period, type, and payment stay selected after each item.</p>
               </div>
+              {activePeriod && selectedType && (
+                <button
+                  type="button"
+                  className="entry-context-card__reset"
+                  onClick={handleResetEntryContext}
+                  disabled={!canEdit}
+                >
+                  Reset context
+                </button>
+              )}
+            </header>
+
+            <div className="entry-context-card__selectors">
+              <section className="entry-context-card__group" aria-labelledby="entry-period-title">
+                <div className="entry-context-card__group-title">
+                  <span><AppIcon name="clock" size={17} /></span>
+                  <h4 id="entry-period-title">Select Period</h4>
+                </div>
+                <PeriodTabs
+                  activePeriod={activePeriod}
+                  onChange={setActivePeriod}
+                  disabled={!canEdit}
+                />
+              </section>
+
+              <section className="entry-context-card__group" aria-labelledby="entry-type-title">
+                <div className="entry-context-card__group-title">
+                  <span><AppIcon name="sliders" size={17} /></span>
+                  <h4 id="entry-type-title">Select Type</h4>
+                </div>
+                <ExpenseTypeSelector
+                  selectedType={selectedType}
+                  onChange={setSelectedType}
+                  disabled={!canEdit}
+                />
+              </section>
             </div>
-          )}
 
-          {activePeriod && selectedType && (
-            <ExpenseEntryForm
-              key={`${activePeriod}-${selectedType}`}
-              activePeriod={activePeriod}
-              selectedType={selectedType}
-              onAddItem={handleAddItem}
-              onAfterAdd={() => setSelectedType("")}
-              initialPaymentType={preferredPaymentType}
-              onPaymentTypeChange={setPreferredPaymentType}
-              disabled={!canEdit}
-            />
-          )}
+            {activePeriod && selectedType ? (
+              <div className="entry-context-card__active" role="status">
+                <span><AppIcon name="check" size={15} /> Active context</span>
+                <strong>{activePeriodLabel} · {selectedTypeLabel} · {preferredPaymentType === "gpay" ? "GPay" : "Cash"}</strong>
+              </div>
+            ) : canEdit && selectionGuidance ? (
+              <div className="entry-context-card__guidance" role="status">
+                <AppIcon name="sparkle" size={16} />
+                <span>{selectionGuidance}</span>
+              </div>
+            ) : null}
+        </div>
 
+        {activePeriod && selectedType && (
+          <ExpenseEntryForm
+            key={`${activePeriod}-${selectedType}`}
+            activePeriod={activePeriod}
+            selectedType={selectedType}
+            onAddItem={handleAddItem}
+            initialPaymentType={preferredPaymentType}
+            onPaymentTypeChange={setPreferredPaymentType}
+            disabled={!canEdit}
+          />
+        )}
+
+        <div className="add-today-lower">
+          <div className="add-today-draft-stack">
           <ExpenseDraftList
             draftItems={draftItems}
             onUpdateItem={handleUpdateDraftItem}
@@ -457,17 +499,16 @@ function AddTodayPage() {
               Submit Today Transaction
             </Button>
           </div>
-        </div>
+          </div>
 
-        <div className="right-column">
           <TodaySummaryCard
             savedTodayTotal={dailyTotal.total}
             savedTodayCashTotal={dailyTotal.cashTotal}
             savedTodayGPayTotal={dailyTotal.gpayTotal}
           />
-
-          <TodayOverviewTable items={savedTodayItems} />
         </div>
+
+        <TodayOverviewTable items={savedTodayItems} />
       </div>
 
       <ConfirmModal

@@ -1,4 +1,14 @@
 import { PERIODS } from "../../utils/constants";
+import AppIcon from "../common/AppIcon";
+
+const periodIcons = {
+  morning: "sunrise",
+  afternoon: "sun",
+  evening: "sunset",
+  night: "moon",
+  other: "clock",
+  all: "calendar",
+};
 
 function PeriodTabs({ activePeriod, onChange, disabled = false, includeAll = false }) {
   const periodOptions = includeAll
@@ -19,7 +29,8 @@ function PeriodTabs({ activePeriod, onChange, disabled = false, includeAll = fal
           onClick={() => onChange(period.value)}
           disabled={disabled}
         >
-          {period.label}
+          <AppIcon name={periodIcons[period.value] || "clock"} size={17} />
+          <span>{period.label}</span>
         </button>
       ))}
     </div>

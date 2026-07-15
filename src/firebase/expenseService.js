@@ -70,7 +70,6 @@ export async function saveExpenseTemplate({
   type,
   name,
   description,
-  customCategory,
   price,
   paymentType,
 }) {
@@ -80,8 +79,6 @@ export async function saveExpenseTemplate({
   const cleanDescription =
     type === "bus" ? String(description || "").trim() : "";
   const templateLabel = type === "bus" ? cleanDescription : cleanName;
-  const cleanCustomCategory =
-    type === "custom" ? normalizeText(customCategory) : "";
   const priceNumber = toNumber(price);
 
   if (!EXPENSE_TEMPLATE_PERIODS.includes(period)) {
@@ -132,7 +129,7 @@ export async function saveExpenseTemplate({
       type,
       name: cleanName,
       description: cleanDescription,
-      customCategory: cleanCustomCategory,
+      customCategory: "",
       price: priceNumber,
       paymentType,
       ...(id ? {} : { createdAt: serverTimestamp() }),

@@ -15,25 +15,36 @@ function monthNumber(token) {
   return MONTHS[String(token || "").toLowerCase()] || null;
 }
 
+function validDateString(year, month, day) {
+  if (![year, month, day].every(Number.isInteger)) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() + 1 !== month ||
+    date.getUTCDate() !== day
+  ) return null;
+  return toDateString(year, month, day);
+}
+
 export function extractSingleDate(text, today = getKolkataTodayParts()) {
   const value = normalizeMessage(text);
 
   const isoDate = value.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
-  if (isoDate) return toDateString(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
+  if (isoDate) return validDateString(Number(isoDate[1]), Number(isoDate[2]), Number(isoDate[3]));
 
   const dmyDate = value.match(/\b(\d{1,2})[/-](\d{1,2})(?:[/-](20\d{2}))?\b/);
-  if (dmyDate) return toDateString(Number(dmyDate[3] || today.year), Number(dmyDate[2]), Number(dmyDate[1]));
+  if (dmyDate) return validDateString(Number(dmyDate[3] || today.year), Number(dmyDate[2]), Number(dmyDate[1]));
 
   const dayMonth = value.match(new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_PATTERN})(?:\\s+(20\\d{2}))?\\b`));
-  if (dayMonth) return toDateString(Number(dayMonth[3] || today.year), monthNumber(dayMonth[2]), Number(dayMonth[1]));
+  if (dayMonth) return validDateString(Number(dayMonth[3] || today.year), monthNumber(dayMonth[2]), Number(dayMonth[1]));
 
   const monthDay = value.match(new RegExp(`\\b(${MONTH_PATTERN})\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s+(20\\d{2}))?\\b`));
-  if (monthDay) return toDateString(Number(monthDay[3] || today.year), monthNumber(monthDay[1]), Number(monthDay[2]));
+  if (monthDay) return validDateString(Number(monthDay[3] || today.year), monthNumber(monthDay[1]), Number(monthDay[2]));
 
   const dayOnly = value.match(/\b(\d{1,2})(?:st|nd|rd|th)\b/);
   if (dayOnly && !/\btop\s+\d+\b/.test(value)) {
     const day = Number(dayOnly[1]);
-    if (day >= 1 && day <= 31) return toDateString(today.year, today.month, day);
+    if (day >= 1 && day <= 31) return validDateString(today.year, today.month, day);
   }
 
   return null;
@@ -71,7 +82,56 @@ export function parseDateRange(message) {
     return { startDate: null, endDate: null, source: "all-time", explicit: true };
   }
 
-  const between = text.match(/\bbetween\s+(.+?)\s+and\s+(.+?)(?:\s|$)/);
+  const daysAgo = text.match(/\b(\d{1,3})\s+days?\s+ago\b/);
+  if (daysAgo) {
+    const date = addDays(today.dateString, -Math.min(Number(daysAgo[1]), 3650));
+    return { startDate: date, endDate: date, source: "days-ago", explicit: true };
+  }
+
+  const lastDays = text.match(/\b(?:last|past|previous)\s+(\d{1,3})\s+days?\b/);
+  if (lastDays) {
+    const days = Math.max(1, Math.min(Number(lastDays[1]), 3650));
+    return { startDate: addDays(today.dateString, -(days - 1)), endDate: today.dateString, source: "last-n-days", explicit: true };
+  }
+
+  const lastWeeks = text.match(/\b(?:last|past|previous)\s+(\d{1,2})\s+weeks?\b/);
+  if (lastWeeks) {
+    const days = Math.max(7, Math.min(Number(lastWeeks[1]) * 7, 3650));
+    return { startDate: addDays(today.dateString, -(days - 1)), endDate: today.dateString, source: "last-n-weeks", explicit: true };
+  }
+
+  const monthsAgo = text.match(/\b(\d{1,2})\s+months?\s+ago\b/);
+  if (monthsAgo) {
+    const date = new Date(Date.UTC(today.year, today.month - 1 - Math.min(Number(monthsAgo[1]), 120), 1));
+    return { ...getMonthRange(date.getUTCFullYear(), date.getUTCMonth() + 1), source: "months-ago", explicit: true };
+  }
+
+  if (/\b(week to date|wtd)\b/.test(text)) {
+    return { ...getWeekRange(today.dateString, 0, true), source: "week-to-date", explicit: true };
+  }
+
+  if (/\b(year to date|ytd)\b/.test(text)) {
+    return { startDate: `${today.year}-01-01`, endDate: today.dateString, source: "year-to-date", explicit: true };
+  }
+
+  if (/\b(this|current) quarter\b/.test(text)) {
+    const startMonth = Math.floor((today.month - 1) / 3) * 3 + 1;
+    return { startDate: toDateString(today.year, startMonth, 1), endDate: today.dateString, source: "this-quarter", explicit: true };
+  }
+
+  if (/\b(last|previous) quarter\b/.test(text)) {
+    const currentStartMonth = Math.floor((today.month - 1) / 3) * 3 + 1;
+    const end = new Date(Date.UTC(today.year, currentStartMonth - 1, 0));
+    const start = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 2, 1));
+    return {
+      startDate: toDateString(start.getUTCFullYear(), start.getUTCMonth() + 1, 1),
+      endDate: toDateString(end.getUTCFullYear(), end.getUTCMonth() + 1, end.getUTCDate()),
+      source: "last-quarter",
+      explicit: true,
+    };
+  }
+
+  const between = text.match(/\bbetween\s+(.+?)\s+and\s+(.+?)(?=\s+(?:how|tell|show|with|using|for|cash|gpay|food|bus|snacks|type|period|payment|top|highest|lowest|give|compare|split|breakdown|summary)\b|$)/);
   if (between) {
     const range = buildRangeFromTwoDates(between[1], between[2], today);
     if (range) return { ...range, explicit: true };
@@ -88,24 +148,22 @@ export function parseDateRange(message) {
     const startMonth = monthNumber(simpleRange[1]);
     const endMonth = monthNumber(simpleRange[3] || simpleRange[1]);
     const year = Number(simpleRange[5] || today.year);
-    return {
-      startDate: toDateString(year, startMonth, Number(simpleRange[2])),
-      endDate: toDateString(year, endMonth, Number(simpleRange[4])),
-      source: "custom-range",
-      explicit: true,
-    };
+    const startDate = validDateString(year, startMonth, Number(simpleRange[2]));
+    const endDate = validDateString(year, endMonth, Number(simpleRange[4]));
+    if (startDate && endDate) {
+      return { startDate, endDate, source: "custom-range", explicit: true };
+    }
   }
 
   const dayToDaySameMonth = text.match(new RegExp(`\\b(?:from\\s+)?(\\d{1,2})(?:st|nd|rd|th)?\\s+(?:to|-|until|till|through)\\s+(\\d{1,2})(?:st|nd|rd|th)?\\s+(${MONTH_PATTERN})(?:\\s+(20\\d{2}))?\\b`));
   if (dayToDaySameMonth) {
     const month = monthNumber(dayToDaySameMonth[3]);
     const year = Number(dayToDaySameMonth[4] || today.year);
-    return {
-      startDate: toDateString(year, month, Number(dayToDaySameMonth[1])),
-      endDate: toDateString(year, month, Number(dayToDaySameMonth[2])),
-      source: "custom-range",
-      explicit: true,
-    };
+    const startDate = validDateString(year, month, Number(dayToDaySameMonth[1]));
+    const endDate = validDateString(year, month, Number(dayToDaySameMonth[2]));
+    if (startDate && endDate) {
+      return { startDate, endDate, source: "custom-range", explicit: true };
+    }
   }
 
   if (/\b(till today|until today|up to today|so far|till now|until now|month to date|mtd)\b/.test(text)) {
@@ -146,6 +204,14 @@ export function parseDateRange(message) {
 
   const exactDate = extractSingleDate(text, today);
   if (exactDate) return { startDate: exactDate, endDate: exactDate, source: "exact-date", explicit: true };
+
+  const containsInvalidExactDate =
+    /\b\d{1,2}[/-]\d{1,2}(?:[/-]20\d{2})?\b/.test(text) ||
+    new RegExp(`\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:${MONTH_PATTERN})(?:\\s+20\\d{2})?\\b`).test(text) ||
+    new RegExp(`\\b(?:${MONTH_PATTERN})\\s+\\d{1,2}(?:st|nd|rd|th)?(?:\\s+20\\d{2})?\\b`).test(text);
+  if (containsInvalidExactDate) {
+    return { startDate: null, endDate: null, source: "invalid-date", explicit: true, invalid: true };
+  }
 
   const monthOnly = text.match(new RegExp(`\\b(${MONTH_PATTERN})(?:\\s+(20\\d{2}))?\\b`));
   if (monthOnly) {

@@ -23,6 +23,19 @@ const EXPENSE_KEYWORDS = [
   "upi",
   "payment",
   "paid",
+  "purchase",
+  "purchased",
+  "buy",
+  "bought",
+  "costly",
+  "expensive",
+  "cheap",
+  "cheapest",
+  "frequent",
+  "frequently",
+  "trend",
+  "increase",
+  "decrease",
   "price",
   "amount",
   "total",
@@ -82,31 +95,30 @@ const BLOCKED_TOPIC_PATTERNS = [
 
 export function getDomainDecision(message, context = {}) {
   const text = normalizeMessage(message);
-  if (!text) return { allowed: false, reason: "empty" };
+  if (!String(message || "").trim()) return { allowed: false, reason: "empty" };
+  if (!text) return { allowed: true, kind: "candidate" };
 
   if (GENERIC_CHAT_PATTERNS.some((pattern) => pattern.test(text))) {
     return { allowed: true, kind: "generic" };
   }
 
   const hasExpenseKeyword = EXPENSE_KEYWORDS.some((keyword) => text.includes(keyword));
+  const hasStrongExpenseKeyword = /\b(expense|expenses|spend|spent|spending|balance|wallet|cash|gpay|upi|payment|paid|price|amount|item|items|purchase|purchased|budget)\b/.test(text);
   const isFollowUp = /^(how much|how many|how many times|count|times|which dates|cash or gpay|what about that|what about it|what about this|and that|there|that one|this one|same|again)$/i.test(text);
 
   if (isFollowUp && (context.focusItem || context.lastIntent || context.filters || context.dateRange)) {
     return { allowed: true, kind: "expense" };
   }
 
-  if (BLOCKED_TOPIC_PATTERNS.some((pattern) => pattern.test(text)) && !hasExpenseKeyword) {
+  if (BLOCKED_TOPIC_PATTERNS.some((pattern) => pattern.test(text)) && !hasStrongExpenseKeyword) {
     return { allowed: false, reason: "out-of-domain" };
   }
 
   if (hasExpenseKeyword) return { allowed: true, kind: "expense" };
 
-  // Short follow-ups without context are not unrelated, but unclear.
-  if (text.split(" ").length <= 4 && /\b(how|what|which|count|times|total|compare|more|less)\b/.test(text)) {
-    return { allowed: true, kind: "needs-clarification" };
-  }
-
-  return { allowed: false, reason: "out-of-domain" };
+  // Let the semantic planner classify natural expense wording and follow-ups
+  // that are not covered by the fast keyword guard.
+  return { allowed: true, kind: "candidate" };
 }
 
 export function outOfDomainReply() {

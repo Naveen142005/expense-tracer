@@ -168,6 +168,9 @@ export function buildExpenseSummary(rawExpenses, plan) {
       dates: item.dates,
       dateAmounts: item.dateAmounts,
     })),
+    itemTotals: Object.fromEntries(
+      itemStats.map((item) => [item.key, { amount: roundMoney(item.amount), count: item.count, item: item.item }])
+    ),
     focusedItem: focusedItem
       ? {
           key: focusedItem.key,

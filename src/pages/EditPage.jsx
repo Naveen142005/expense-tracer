@@ -168,14 +168,14 @@ function EditPage() {
               type: value,
               name: item.name || item.description || "",
               description: "",
-              customCategory:
-                value === "custom" ? item.customCategory || "" : "",
+              customCategory: "",
             };
           }
 
           return {
             ...item,
             type: value,
+            customCategory: "",
           };
         }
 

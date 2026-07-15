@@ -1,4 +1,12 @@
 import { EXPENSE_TYPES } from "../../utils/constants";
+import AppIcon from "../common/AppIcon";
+
+const typeIcons = {
+  food: "food",
+  snacks: "snack",
+  bus: "bus",
+  custom: "sliders",
+};
 
 function ExpenseTypeSelector({ selectedType, onChange, disabled = false }) {
   return (
@@ -15,7 +23,8 @@ function ExpenseTypeSelector({ selectedType, onChange, disabled = false }) {
           onClick={() => onChange(type.value)}
           disabled={disabled}
         >
-          {type.label}
+          <AppIcon name={typeIcons[type.value] || "sliders"} size={17} />
+          <span>{type.label}</span>
         </button>
       ))}
     </div>

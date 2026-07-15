@@ -1,10 +1,100 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { PERIODS } from "../../utils/constants";
 import { formatCurrency, toNumber } from "../../utils/totalUtils";
+import AppIcon from "../common/AppIcon";
 
 function capitalize(value = "") {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Unknown";
+}
+
+function useAnimatedAmount(value, duration = 720) {
+  const target = toNumber(value);
+  const previousTarget = useRef(0);
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    const startValue = previousTarget.current;
+    previousTarget.current = target;
+
+    if (typeof window === "undefined") return undefined;
+
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      const animationFrame = window.requestAnimationFrame(() => {
+        setDisplayValue(target);
+      });
+      return () => window.cancelAnimationFrame(animationFrame);
+    }
+
+    let animationFrame = 0;
+    const startedAt = performance.now();
+    const difference = target - startValue;
+
+    const update = (timestamp) => {
+      const progress = Math.min((timestamp - startedAt) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(startValue + difference * easedProgress);
+
+      if (progress < 1) animationFrame = window.requestAnimationFrame(update);
+    };
+
+    animationFrame = window.requestAnimationFrame(update);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [duration, target]);
+
+  return displayValue;
+}
+
+function AnimatedCurrency({ value }) {
+  const displayedValue = useAnimatedAmount(value);
+  return (
+    <span className="report-animated-value" aria-label={formatCurrency(value)}>
+      {formatCurrency(displayedValue)}
+    </span>
+  );
+}
+
+function useRevealOnView() {
+  const visibilityThreshold = 0.5;
+  const elementRef = useRef(null);
+  const [revealed, setRevealed] = useState(
+    () =>
+      typeof IntersectionObserver === "undefined" ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  );
+
+  useEffect(() => {
+    const element = elementRef.current;
+    if (!element || revealed) return undefined;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (
+          entries.some(
+            (entry) =>
+              entry.isIntersecting &&
+              entry.intersectionRatio >= visibilityThreshold
+          )
+        ) {
+          setRevealed(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: visibilityThreshold, rootMargin: "0px 0px -2% 0px" }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [revealed]);
+
+  return [elementRef, revealed];
 }
 
 function groupExpenses(items, getKey) {
@@ -87,6 +177,7 @@ function getSpendComparison(items, range) {
         currentDetailKey: `${currentYear}-${month}`,
         previousDetailKey: `${previousYear}-${month}`,
         detailType: "month",
+        isFuture: isFutureMonth,
       };
     });
 
@@ -94,6 +185,7 @@ function getSpendComparison(items, range) {
       series,
       currentLabel: "This Year Spend",
       previousLabel: "Last Year Spend",
+      dataThroughLabel: `${MONTH_LABELS[currentMonthIndex]} ${currentYear}`,
     };
   }
 
@@ -153,10 +245,26 @@ function getSpendComparison(items, range) {
       currentDetailKey: currentExists ? toDateKey(currentDate) : null,
       previousDetailKey: previousExists ? toDateKey(previousDate) : null,
       detailType: "date",
+      isFuture: range === "lastWeek" ? false : isFutureCurrentDate,
     };
   });
 
-  return { series, currentLabel, previousLabel };
+  let dataThroughDate = today;
+  if (range === "lastWeek") dataThroughDate = addDays(previousStart, 6);
+  if (range === "lastMonth") {
+    dataThroughDate = new Date(
+      currentStart.getFullYear(),
+      currentStart.getMonth(),
+      getDaysInMonth(currentStart)
+    );
+  }
+
+  return {
+    series,
+    currentLabel,
+    previousLabel,
+    dataThroughLabel: formatShortDate(dataThroughDate),
+  };
 }
 
 function getNiceStep(value) {
@@ -561,10 +669,20 @@ function ExpenseDetailsModal({ selection, items, onClose }) {
   );
 }
 
-function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
-  const { series, currentLabel, previousLabel } = comparison;
+function SpendOverviewChart({
+  comparison,
+  selectedRange,
+  items = [],
+  shouldAnimate = false,
+}) {
+  const { series, currentLabel, previousLabel, dataThroughLabel } = comparison;
   const [activePoint, setActivePoint] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
+  const linePathRef = useRef(null);
+  const areaPathRef = useRef(null);
+  const revealClipRef = useRef(null);
+  const terminalPointRef = useRef(null);
+  const revealClipId = `spend-overview-reveal-${useId().replace(/:/g, "")}`;
   const width = 620;
   const height = 340;
   const left = 48;
@@ -607,6 +725,7 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
     selectedPoints.length > 1
       ? `${createSmoothPath(selectedPoints)} L ${lastPoint.x} ${baselineY} L ${firstPoint.x} ${baselineY} Z`
       : "";
+  const linePath = createSmoothPath(selectedPoints);
   const currentTotal = series.reduce(
     (total, item) => total + (item.current || 0),
     0
@@ -636,12 +755,109 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
       : "spend-overview__change--less";
   const labelInterval = series.length <= 10 ? 1 : series.length <= 16 ? 2 : 5;
 
+  useLayoutEffect(() => {
+    const lineElement = linePathRef.current;
+    const areaElement = areaPathRef.current;
+    const clipElement = revealClipRef.current;
+    const terminalElement = terminalPointRef.current;
+    if (!lineElement || !clipElement || !linePath) return undefined;
+
+    const reducedMotion = window.matchMedia?.(
+      "(prefers-reduced-motion: reduce)"
+    ).matches;
+    const revealStartX = left - 8;
+    const revealWidth = chartWidth + 16;
+    let animationFrame = 0;
+    let cancelled = false;
+
+    lineElement.getAnimations?.().forEach((animation) => animation.cancel());
+    areaElement?.getAnimations?.().forEach((animation) => animation.cancel());
+
+    lineElement.style.setProperty("animation", "none", "important");
+    lineElement.style.setProperty("stroke-dasharray", "none", "important");
+    lineElement.style.setProperty("stroke-dashoffset", "0", "important");
+
+    function showCompleteChart() {
+      clipElement.setAttribute("x", String(revealStartX));
+      clipElement.setAttribute("width", String(revealWidth));
+      if (areaElement) {
+        areaElement.style.opacity = "1";
+        areaElement.style.transform = "none";
+      }
+      if (terminalElement) terminalElement.style.opacity = "1";
+    }
+
+    if (reducedMotion) {
+      showCompleteChart();
+      return undefined;
+    }
+
+    clipElement.setAttribute("x", String(revealStartX));
+    clipElement.setAttribute("width", "0");
+    if (areaElement) {
+      areaElement.style.opacity = "0";
+      areaElement.style.transform = "none";
+    }
+    if (terminalElement) terminalElement.style.opacity = "0";
+
+    if (!shouldAnimate) return undefined;
+
+    const lineDuration = 1120;
+    const areaDuration = 760;
+    const areaDelay = 70;
+    let startedAt;
+
+    function animateFrame(timestamp) {
+      if (cancelled) return;
+      if (startedAt === undefined) startedAt = timestamp;
+      const elapsed = timestamp - startedAt;
+      const lineProgress = Math.min(elapsed / lineDuration, 1);
+      const lineEased = 1 - Math.pow(1 - lineProgress, 3);
+
+      clipElement.setAttribute("width", String(revealWidth * lineEased));
+
+      if (areaElement) {
+        const areaProgress = Math.min(
+          Math.max((elapsed - areaDelay) / areaDuration, 0),
+          1
+        );
+        const areaEased = 1 - Math.pow(1 - areaProgress, 3);
+        areaElement.style.opacity = String(areaEased);
+      }
+
+      if (terminalElement) {
+        const terminalProgress = Math.min(
+          Math.max((lineProgress - 0.82) / 0.18, 0),
+          1
+        );
+        terminalElement.style.opacity = String(terminalProgress);
+      }
+
+      if (lineProgress < 1) {
+        animationFrame = window.requestAnimationFrame(animateFrame);
+      } else {
+        showCompleteChart();
+      }
+    }
+
+    animationFrame = window.requestAnimationFrame(animateFrame);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(animationFrame);
+    };
+  }, [linePath, areaPath, selectedRange, shouldAnimate, chartWidth, left]);
+
   return (
     <div className="spend-overview">
-      <div className="spend-overview__legend" aria-hidden="true">
+      <div className="spend-overview__legend">
         <span>
           <i className="spend-overview__legend-line spend-overview__legend-line--current" />
           {selectedLabel.replace(" Spend", "")}
+        </span>
+        <span className="spend-overview__through">
+          <AppIcon name="calendar" size={13} />
+          Data through {dataThroughLabel}
         </span>
       </div>
 
@@ -657,6 +873,15 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
               <stop offset="0%" className="analytics-trend__area-stop analytics-trend__area-stop--top" />
               <stop offset="100%" className="analytics-trend__area-stop analytics-trend__area-stop--bottom" />
             </linearGradient>
+            <clipPath id={revealClipId} clipPathUnits="userSpaceOnUse">
+              <rect
+                ref={revealClipRef}
+                x={left - 8}
+                y={top - 8}
+                width="0"
+                height={chartHeight + 16}
+              />
+            </clipPath>
           </defs>
           {Array.from({ length: 5 }, (_, index) => {
             const value = maximum - step * index;
@@ -685,15 +910,30 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
 
           {areaPath && (
             <path
+              ref={areaPathRef}
               d={areaPath}
               className="analytics-trend__area analytics-trend__area--current"
+              clipPath={`url(#${revealClipId})`}
             />
           )}
 
           <path
-            d={createSmoothPath(selectedPoints)}
+            ref={linePathRef}
+            d={linePath}
             className="analytics-trend__line analytics-trend__line--current"
+            clipPath={`url(#${revealClipId})`}
           />
+
+          {lastPoint && (
+            <g
+              ref={terminalPointRef}
+              className="analytics-trend__terminal-point"
+              aria-hidden="true"
+            >
+              <circle cx={lastPoint.x} cy={lastPoint.y} r="8" />
+              <circle cx={lastPoint.x} cy={lastPoint.y} r="3.8" />
+            </g>
+          )}
 
           {selectedPoints.length === 1 && selectedPoints.map((point) => (
             <circle
@@ -813,7 +1053,9 @@ function SpendOverviewChart({ comparison, selectedRange, items = [] }) {
                     ? "end"
                     : "middle"
                 }
-                className="analytics-trend__label"
+                className={`analytics-trend__label${
+                  item.isFuture ? " analytics-trend__label--future" : ""
+                }`}
               >
                 {item.label}
               </text>
@@ -1145,7 +1387,18 @@ function DistributionDonut({ mode, analytics }) {
   const total = data.reduce((sum, item) => sum + toNumber(item.value), 0);
   const radius = 58;
   const circumference = 2 * Math.PI * radius;
-  let offset = 0;
+  const donutSegments = data.map((item, index) => {
+    const previousValue = data
+      .slice(0, index)
+      .reduce((sum, entry) => sum + toNumber(entry.value), 0);
+    const percentage = total > 0 ? item.value / total : 0;
+    return {
+      item,
+      index,
+      dash: Math.max(percentage * circumference - 2, 0),
+      offset: total > 0 ? (previousValue / total) * circumference : 0,
+    };
+  });
   const activeItem = activeIndex !== null ? data[activeIndex] : null;
   const centerValue = activeItem ? activeItem.value : total;
   const centerLabel = activeItem ? capitalize(activeItem.label) : config.centerLabel;
@@ -1171,10 +1424,8 @@ function DistributionDonut({ mode, analytics }) {
             r={radius}
             className="distribution-donut__track"
           />
-          {data.map((item, index) => {
-            const percentage = item.value / total;
-            const dash = Math.max(percentage * circumference - 2, 0);
-            const segment = (
+          {donutSegments.map(({ item, index, dash, offset }) => {
+            return (
               <circle
                 key={`${item.label}-${index}`}
                 cx="80"
@@ -1183,15 +1434,18 @@ function DistributionDonut({ mode, analytics }) {
                 className={`distribution-donut__segment distribution-donut__segment--${index % 7}`}
                 strokeDasharray={`${dash} ${circumference}`}
                 strokeDashoffset={-offset}
-                style={{ opacity: activeIndex === null || activeIndex === index ? 1 : 0.32 }}
+                style={{
+                  "--donut-offset": -offset,
+                  "--donut-start-offset": circumference - offset,
+                  "--donut-delay": `${index * 65}ms`,
+                  opacity: activeIndex === null || activeIndex === index ? 1 : 0.32,
+                }}
                 onMouseEnter={() => setActiveIndex(index)}
                 onFocus={() => setActiveIndex(index)}
                 tabIndex="0"
                 aria-label={`${capitalize(item.label)}: ${formatCurrency(item.value)}`}
               />
             );
-            offset += percentage * circumference;
-            return segment;
           })}
         </svg>
         <div className="distribution-donut__center" aria-hidden="true">
@@ -1271,6 +1525,8 @@ function PaymentSplit({ cashTotal, gpayTotal }) {
 export function ReportsAnalytics({ items = [] }) {
   const [trendRange, setTrendRange] = useState("thisWeek");
   const [distributionMode, setDistributionMode] = useState("type");
+  const [trendRef, trendRevealed] = useRevealOnView();
+  const [distributionRef, distributionRevealed] = useRevealOnView();
 
   const analytics = useMemo(() => {
     const typeTotals = groupExpenses(items, (item) => item.type);
@@ -1329,7 +1585,13 @@ export function ReportsAnalytics({ items = [] }) {
       </div>
 
       <div className="reports-analytics-grid">
-        <article className="analytics-card analytics-card--trend" {...getTiltProps()}>
+        <article
+          ref={trendRef}
+          className={`analytics-card analytics-card--trend analytics-card--scroll-reveal${
+            trendRevealed ? " analytics-card--revealed" : ""
+          }`}
+          {...getTiltProps()}
+        >
           <div className="analytics-card__header analytics-card__header--overview">
             <h4>Spend Overview</h4>
             <label className="analytics-range-select">
@@ -1347,13 +1609,21 @@ export function ReportsAnalytics({ items = [] }) {
             </label>
           </div>
           <SpendOverviewChart
+            key={trendRange}
             comparison={analytics.spendComparison}
             selectedRange={trendRange}
             items={items}
+            shouldAnimate={trendRevealed}
           />
         </article>
 
-        <article className="analytics-card analytics-card--distribution" {...getTiltProps()}>
+        <article
+          ref={distributionRef}
+          className={`analytics-card analytics-card--distribution analytics-card--scroll-reveal${
+            distributionRevealed ? " analytics-card--revealed" : ""
+          }`}
+          {...getTiltProps()}
+        >
           <div className="analytics-card__header analytics-card__header--distribution">
             <div>
               <span>Distribution</span>
@@ -1373,7 +1643,11 @@ export function ReportsAnalytics({ items = [] }) {
               </select>
             </label>
           </div>
-          <DistributionDonut mode={distributionMode} analytics={analytics} />
+          <DistributionDonut
+            key={distributionMode}
+            mode={distributionMode}
+            analytics={analytics}
+          />
         </article>
 
       </div>
@@ -1408,45 +1682,53 @@ function ReportSummaryCards({
       <div className="report-primary-grid">
         <article className="report-kpi report-kpi--total">
           <span className="report-kpi__marker" aria-hidden="true" />
+          <span className="report-stat-icon report-stat-icon--total"><AppIcon name="wallet" /></span>
           <p>Total Spend</p>
-          <h3>{formatCurrency(lifetimeTotal)}</h3>
+          <h3><AnimatedCurrency value={lifetimeTotal} /></h3>
           <small>Cash and GPay combined</small>
         </article>
 
         <article className="report-kpi report-kpi--cash">
           <span className="report-kpi__marker" aria-hidden="true" />
+          <span className="report-stat-icon report-stat-icon--cash"><AppIcon name="cash" /></span>
           <p>Cash Spend</p>
-          <h3>{formatCurrency(lifetimeCashTotal)}</h3>
+          <h3><AnimatedCurrency value={lifetimeCashTotal} /></h3>
           <small>Paid from cash balance</small>
         </article>
 
         <article className="report-kpi report-kpi--gpay">
           <span className="report-kpi__marker" aria-hidden="true" />
+          <span className="report-stat-icon report-stat-icon--gpay"><AppIcon name="phone" /></span>
           <p>GPay Spend</p>
-          <h3>{formatCurrency(lifetimeGPayTotal)}</h3>
+          <h3><AnimatedCurrency value={lifetimeGPayTotal} /></h3>
           <small>Paid from GPay balance</small>
         </article>
       </div>
 
       <div className="report-secondary-grid">
         <article className="report-mini-stat">
+          <span className="report-stat-icon"><AppIcon name="calendar" /></span>
           <p>Today</p>
-          <strong>{formatCurrency(todayTotal)}</strong>
+          <strong><AnimatedCurrency value={todayTotal} /></strong>
         </article>
         <article className="report-mini-stat">
+          <span className="report-stat-icon"><AppIcon name="calendar" /></span>
           <p>This Month</p>
-          <strong>{formatCurrency(monthTotal)}</strong>
+          <strong><AnimatedCurrency value={monthTotal} /></strong>
         </article>
         <article className="report-mini-stat">
+          <span className="report-stat-icon"><AppIcon name="calendar" /></span>
           <p>This Year</p>
-          <strong>{formatCurrency(yearTotal)}</strong>
+          <strong><AnimatedCurrency value={yearTotal} /></strong>
         </article>
         <article className="report-mini-stat">
+          <span className="report-stat-icon report-stat-icon--trend"><AppIcon name="trend" /></span>
           <p>Highest Spend Day</p>
           <strong>{mostSpentDay?.date || "-"}</strong>
-          <small>{formatCurrency(mostSpentDay?.total || 0)}</small>
+          <small><AnimatedCurrency value={mostSpentDay?.total || 0} /></small>
         </article>
         <article className="report-mini-stat">
+          <span className="report-stat-icon report-stat-icon--repeat"><AppIcon name="repeat" /></span>
           <p>Most Used Item</p>
           <strong>{mostUsedItemName}</strong>
           <small>{mostUsedItem?.count || 0} times</small>

@@ -12,6 +12,9 @@ import "./styles/balance-wallet.css";
 import "./styles/feedback.css";
 import "./styles/ai-chatbot.css";
 import "./styles/expense-workflow.css";
+import "./styles/premium-motion.css";
+import "./styles/profile.css";
+import "./styles/professional-clean.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

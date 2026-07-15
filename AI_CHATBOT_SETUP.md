@@ -1,12 +1,16 @@
 # AI Expense Query Engine Setup
 
-This version uses a safer architecture than a normal chatbot.
+This version uses a semantic analytics-agent architecture.
 
 ## Flow
 
-React chatbot widget -> `/api/chat` -> Expense Query Engine -> Firestore exact calculation -> optional Groq Llama advice.
+React chatbot widget -> `/api/chat` -> Llama structured query planner -> validated analytics operations -> Firestore exact calculation -> deterministic response -> optional Llama advice.
 
 Exact finance answers are calculated by backend code. Groq/Llama is used only for advice wording, not for deciding totals.
+
+The model may select and compose multiple safe operations, but it never receives authority to calculate or alter financial values. Supported operations include aggregate, list, rank, compare, trend, unique items, current balance, balance history, historical balance and advice. Supported metrics include amount, count, average, minimum, maximum and unique count. Queries may group by item, date, weekday, week, month, period, type or payment method.
+
+If the semantic planner is unavailable, the original deterministic parser remains available for common questions. Ambiguous questions ask for clarification instead of guessing.
 
 ## What this version improves
 
@@ -21,6 +25,13 @@ Exact finance answers are calculated by backend code. Groq/Llama is used only fo
 - Separates metrics from filters:
   - `using GPay` = payment filter
   - `GPay spend` = requested metric, not a filter
+- Validates every named comparison dimension before querying Firestore:
+  - `Food vs Bus` = type comparison
+  - `Cash vs GPay` = payment comparison
+  - `Morning vs Night` = period comparison
+  - saved names such as `Idly vs Egg` = item comparison
+- Corrects model output when a type, payment method, or period was mistakenly returned as an item name.
+- Keeps the requested date authoritative; `this month` uses the complete requested calendar month and a date-free item comparison uses all submitted history.
 - Calculates total spend, Cash spend, GPay spend, counts, top items, highest date, most used period, recent expenses, averages, and comparisons using JavaScript.
 - Handles follow-up questions using context:
   - `How much did I spend on idly?`
@@ -83,6 +94,12 @@ If Git Bash does not load `.env.local` properly, run:
 set -a && source .env.local && set +a && vercel dev
 ```
 
+If the variables were added to Vercel's **Development** environment and pulled into `.vercel/.env.development.local`, start a new terminal with:
+
+```bash
+set -a && source .vercel/.env.development.local && set +a && vercel dev
+```
+
 ## Good test questions
 
 ```txt
@@ -116,3 +133,13 @@ Expected reply:
 ```txt
 I can only help with your expense tracker, spending, balance, reports, and saving advice.
 ```
+
+## Automated verification
+
+Run:
+
+```bash
+npm test
+```
+
+The suite covers date ranges, rolling dates, invalid dates, fallback intent parsing, item spelling resolution, context inheritance, combined filters, amount and frequency comparisons, rankings, unique items, lists, trends and historical balance reconstruction.
