@@ -10,6 +10,8 @@ import {
   getExpenseHistoryMetrics,
   getExpenseHistoryPage,
 } from "../../firebase/reportQueryService";
+import { getTravelTrackerUrl } from "../../services/travelTrackerService";
+import AppIcon from "../common/AppIcon";
 
 function getItemName(item) {
   return item.name || item.description || "-";
@@ -92,6 +94,8 @@ function FullHistoryTable({
   refreshKey = 0,
   onOpenFilters,
   activeFilterCount = 0,
+  includeTravel = false,
+  combinedExpenses = null,
 }) {
   const [periodFilter, setPeriodFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -114,6 +118,7 @@ function FullHistoryTable({
   const [dataError, setDataError] = useState("");
 
   const usesServerPagination =
+    !includeTravel &&
     !searchQuery.trim() &&
     sortConfig.key === "index" &&
     sortConfig.direction === "asc";
@@ -154,6 +159,17 @@ function FullHistoryTable({
         setFallbackItems([]);
         setServerTotalItems(0);
         setServerFilteredTotal(0);
+        setFirstDocument(null);
+        setLastDocument(null);
+        setDataLoading(false);
+        return;
+      }
+
+      if (includeTravel && combinedExpenses) {
+        setFallbackItems(combinedExpenses);
+        setServerItems([]);
+        setServerTotalItems(combinedExpenses.length);
+        setServerFilteredTotal(calculateTotal(combinedExpenses));
         setFirstDocument(null);
         setLastDocument(null);
         setDataLoading(false);
@@ -201,7 +217,14 @@ function FullHistoryTable({
     return () => {
       cancelled = true;
     };
-  }, [queryState, rowsPerPage, usesServerPagination, refreshKey]);
+  }, [
+    queryState,
+    rowsPerPage,
+    usesServerPagination,
+    refreshKey,
+    includeTravel,
+    combinedExpenses,
+  ]);
 
   const items = usesServerPagination ? serverItems : fallbackItems;
 
@@ -401,8 +424,38 @@ function FullHistoryTable({
     if (columnKey === "index") return startIndex + index + 1;
     if (columnKey === "date") return formatDisplayDate(item.date);
     if (columnKey === "period") return item.period;
-    if (columnKey === "type") return item.type;
-    if (columnKey === "nameText") return item.nameText;
+    if (columnKey === "type") {
+      if (item.isTravelLog) {
+        return (
+          <span
+            className="badge-travel-tag"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              padding: "2px 8px",
+              borderRadius: "6px",
+              fontSize: "0.75rem",
+              fontWeight: "600",
+              background: "color-mix(in srgb, var(--primary, #0284c7) 14%, transparent)",
+              color: "var(--primary, #0284c7)",
+              border: "1px solid color-mix(in srgb, var(--primary, #0284c7) 30%, transparent)",
+            }}
+          >
+            <AppIcon name="plane" size={12} />
+            <span>Travel</span>
+          </span>
+        );
+      }
+      return item.type;
+    }
+    if (columnKey === "nameText") {
+      return (
+        <span style={{ fontWeight: item.isTravelLog ? "600" : "normal" }}>
+          {item.nameText || item.name}
+        </span>
+      );
+    }
     if (columnKey === "paymentType") return item.paymentType;
     if (columnKey === "price") return formatCurrency(item.price);
 
@@ -611,18 +664,86 @@ function FullHistoryTable({
 
       <DetailModal
         isOpen={Boolean(selectedItem)}
-        title="Expense Details"
+        title={selectedItem?.isTravelLog ? "Travel Trip Details" : "Expense Details"}
         fields={
           selectedItem
-            ? [
-                { label: "Date", value: formatDisplayDate(selectedItem.date) },
-                { label: "Period", value: selectedItem.period || "-" },
-                { label: "Type", value: selectedItem.type || "-" },
-                { label: "Name / Description", value: selectedItem.nameText },
-                { label: "Payment", value: selectedItem.paymentType || "-" },
-                { label: "Price", value: formatCurrency(selectedItem.price) },
-              ]
+            ? selectedItem.isTravelLog
+              ? [
+                  { label: "Date", value: formatDisplayDate(selectedItem.date) },
+                  { label: "Category", value: "Travel Log" },
+                  {
+                    label: "Route",
+                    value: `${selectedItem.travelDetails?.from || "Start"} → ${
+                      selectedItem.travelDetails?.to || "End"
+                    }`,
+                  },
+                  {
+                    label: "Mode",
+                    value: selectedItem.travelDetails?.mode || "Transit",
+                  },
+                  {
+                    label: "Status",
+                    value: selectedItem.travelDetails?.status || "Completed",
+                  },
+                  {
+                    label: "Payment Mode",
+                    value: (selectedItem.paymentType || "GPay").toUpperCase(),
+                  },
+                  { label: "Cost", value: formatCurrency(selectedItem.price) },
+                  ...(selectedItem.travelDetails?.notes
+                    ? [
+                        {
+                          label: "Notes",
+                          value: selectedItem.travelDetails.notes,
+                        },
+                      ]
+                    : []),
+                  ...(selectedItem.travelDetails?.legs?.length > 1
+                    ? [
+                        {
+                          label: "Route Legs",
+                          value: selectedItem.travelDetails.legs
+                            .map(
+                              (l, i) =>
+                                `#${i + 1}: ${l.from} → ${l.to} (${l.mode || "Transit"})`
+                            )
+                            .join(" | "),
+                        },
+                      ]
+                    : []),
+                ]
+              : [
+                  { label: "Date", value: formatDisplayDate(selectedItem.date) },
+                  { label: "Period", value: selectedItem.period || "-" },
+                  { label: "Type", value: selectedItem.type || "-" },
+                  { label: "Name / Description", value: selectedItem.nameText },
+                  { label: "Payment", value: selectedItem.paymentType || "-" },
+                  { label: "Price", value: formatCurrency(selectedItem.price) },
+                ]
             : []
+        }
+        footer={
+          selectedItem?.isTravelLog ? (
+            <a
+              href={`${getTravelTrackerUrl()}?tripId=${selectedItem.originalTripId || ""}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                textDecoration: "none",
+                padding: "8px 16px",
+                borderRadius: "8px",
+                fontSize: "0.85rem",
+                fontWeight: "500",
+                color: "#ffffff",
+                background: "var(--primary, #0ea5e9)",
+              }}
+            >
+              <span>Open in Travel Tracker ↗</span>
+            </a>
+          ) : null
         }
         onClose={() => setSelectedItem(null)}
       />

@@ -42,12 +42,15 @@ function BalanceAdjustForm({
     }
 
     const amount = Number(form.amount);
+    const isReplace = form.action === "replace";
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(amount) || (isReplace ? amount < 0 : amount <= 0)) {
       notify({
         type: "warning",
         title: "Invalid amount",
-        message: "Enter an amount greater than zero.",
+        message: isReplace
+          ? "Enter a valid amount (0 or greater)."
+          : "Enter an amount greater than zero.",
       });
       return;
     }
@@ -56,13 +59,17 @@ function BalanceAdjustForm({
       balanceType: form.balanceType,
       action: form.action,
       amount,
-      reason: form.reason.trim() || "Manual balance adjustment",
+      reason:
+        form.reason.trim() ||
+        (isReplace ? "Balance replaced directly" : "Manual balance adjustment"),
     });
 
     if (!updated) return;
 
     setForm(initialForm);
   }
+
+  const isReplace = form.action === "replace";
 
   return (
     <form className="card balance-adjust-form" onSubmit={handleSubmit}>
@@ -90,19 +97,20 @@ function BalanceAdjustForm({
           options={[
             { label: "Add Balance", value: "add" },
             { label: "Reduce Balance", value: "reduce" },
+            { label: "Replace Balance", value: "replace" },
           ]}
           disabled={loading || disabled}
         />
 
         <Input
-          label="Amount"
+          label={isReplace ? "New Balance Amount" : "Amount"}
           name="amount"
           type="number"
           value={form.amount}
           onChange={handleChange}
-          placeholder="Enter amount"
-          min="1"
-          step="1"
+          placeholder={isReplace ? "Enter new balance" : "Enter amount"}
+          min={isReplace ? "0" : "1"}
+          step="any"
           required
           disabled={loading || disabled}
         />
@@ -112,7 +120,7 @@ function BalanceAdjustForm({
           name="reason"
           value={form.reason}
           onChange={handleChange}
-          placeholder="Example: Added funds, correction"
+          placeholder={isReplace ? "Example: Replaced balance, audit reset" : "Example: Added funds, correction"}
           disabled={loading || disabled}
         />
       </div>

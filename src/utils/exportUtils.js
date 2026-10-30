@@ -35,18 +35,20 @@ export function exportAsCSV(items = [], filename = "expense-data.csv") {
     "Description",
     "Payment Type",
     "Price",
+    "Source",
     "Created At",
   ];
 
   const rows = items.map((item) => [
     item.date || "",
     item.period || "",
-    item.type || "",
+    item.isTravelLog ? "Travel" : item.type || "",
     item.name || "",
     item.description || "",
     item.paymentType || "",
     item.price || 0,
-    formatTimestamp(item.createdAt),
+    item.isTravelLog ? "Travel Tracker" : "Daily Expense",
+    item.createdAt ? formatTimestamp(item.createdAt) : item.date || "",
   ]);
 
   const csvContent = [headers, ...rows]

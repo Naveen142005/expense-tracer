@@ -40,6 +40,7 @@ function formatBalanceType(balanceType) {
 function formatAction(action = "") {
   if (action === "add") return "Added";
   if (action === "reduce") return "Reduced";
+  if (action === "replace") return "Replaced";
   if (action.endsWith("_refund")) return "Refunded";
   if (action.endsWith("_deduction")) return "Deduction";
 
@@ -49,6 +50,7 @@ function formatAction(action = "") {
 function getActionTone(action = "") {
   if (action === "add") return "added";
   if (action === "reduce") return "reduced";
+  if (action === "replace") return "edit-refund";
   if (action.startsWith("edit_") && action.endsWith("_refund")) {
     return "edit-refund";
   }

@@ -15,6 +15,13 @@ function capitalize(value = "") {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Unknown";
 }
 
+function formatCategoryLabel(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "mixed") return "Mixed (Multi-leg)";
+  if (normalized === "gpay") return "GPay";
+  return capitalize(normalized);
+}
+
 function useAnimatedAmount(value, duration = 720) {
   const target = toNumber(value);
   const previousTarget = useRef(0);
@@ -108,6 +115,7 @@ function groupExpenses(items, getKey) {
 function toSortedSeries(data, limit) {
   return Object.entries(data)
     .map(([label, value]) => ({ label, value }))
+    .filter((entry) => entry.value > 0)
     .sort((a, b) => b.value - a.value)
     .slice(0, limit);
 }
@@ -159,8 +167,18 @@ function formatShortDate(date) {
 function getSpendComparison(items, range) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const regularItems = items.filter((item) => !item.isTravelLog);
+  const travelItems = items.filter((item) => Boolean(item.isTravelLog));
+  const hasAnyTravel = travelItems.length > 0;
+
   const dailyTotals = groupExpenses(items, (item) => item.date);
+  const dailyExpenseTotals = groupExpenses(regularItems, (item) => item.date);
+  const dailyTravelTotals = groupExpenses(travelItems, (item) => item.date);
+
   const monthlyTotals = groupExpenses(items, (item) => item.date?.slice(0, 7));
+  const monthlyExpenseTotals = groupExpenses(regularItems, (item) => item.date?.slice(0, 7));
+  const monthlyTravelTotals = groupExpenses(travelItems, (item) => item.date?.slice(0, 7));
 
   if (range === "yearly") {
     const currentYear = today.getFullYear();
@@ -169,13 +187,19 @@ function getSpendComparison(items, range) {
     const series = MONTH_LABELS.map((label, index) => {
       const month = String(index + 1).padStart(2, "0");
       const isFutureMonth = index > currentMonthIndex;
+      const currentMonthKey = `${currentYear}-${month}`;
+      const previousMonthKey = `${previousYear}-${month}`;
 
       return {
         label,
-        current: isFutureMonth ? null : monthlyTotals[`${currentYear}-${month}`] || 0,
-        previous: monthlyTotals[`${previousYear}-${month}`] || 0,
-        currentDetailKey: `${currentYear}-${month}`,
-        previousDetailKey: `${previousYear}-${month}`,
+        current: isFutureMonth ? null : monthlyTotals[currentMonthKey] || 0,
+        currentExpense: isFutureMonth ? null : monthlyExpenseTotals[currentMonthKey] || 0,
+        currentTravel: isFutureMonth ? null : monthlyTravelTotals[currentMonthKey] || 0,
+        previous: monthlyTotals[previousMonthKey] || 0,
+        previousExpense: monthlyExpenseTotals[previousMonthKey] || 0,
+        previousTravel: monthlyTravelTotals[previousMonthKey] || 0,
+        currentDetailKey: currentMonthKey,
+        previousDetailKey: previousMonthKey,
         detailType: "month",
         isFuture: isFutureMonth,
       };
@@ -186,6 +210,7 @@ function getSpendComparison(items, range) {
       currentLabel: "This Year Spend",
       previousLabel: "Last Year Spend",
       dataThroughLabel: `${MONTH_LABELS[currentMonthIndex]} ${currentYear}`,
+      hasAnyTravel,
     };
   }
 
@@ -232,6 +257,8 @@ function getSpendComparison(items, range) {
     const previousExists = index < previousDays;
 
     const isFutureCurrentDate = currentDate > today;
+    const dateKey = toDateKey(currentDate);
+    const prevDateKey = toDateKey(previousDate);
 
     return {
       label: isWeekly
@@ -239,11 +266,21 @@ function getSpendComparison(items, range) {
         : String(index + 1),
       current:
         currentExists && !isFutureCurrentDate
-          ? dailyTotals[toDateKey(currentDate)] || 0
+          ? dailyTotals[dateKey] || 0
           : null,
-      previous: previousExists ? dailyTotals[toDateKey(previousDate)] || 0 : null,
-      currentDetailKey: currentExists ? toDateKey(currentDate) : null,
-      previousDetailKey: previousExists ? toDateKey(previousDate) : null,
+      currentExpense:
+        currentExists && !isFutureCurrentDate
+          ? dailyExpenseTotals[dateKey] || 0
+          : null,
+      currentTravel:
+        currentExists && !isFutureCurrentDate
+          ? dailyTravelTotals[dateKey] || 0
+          : null,
+      previous: previousExists ? dailyTotals[prevDateKey] || 0 : null,
+      previousExpense: previousExists ? dailyExpenseTotals[prevDateKey] || 0 : null,
+      previousTravel: previousExists ? dailyTravelTotals[prevDateKey] || 0 : null,
+      currentDetailKey: currentExists ? dateKey : null,
+      previousDetailKey: previousExists ? prevDateKey : null,
       detailType: "date",
       isFuture: range === "lastWeek" ? false : isFutureCurrentDate,
     };
@@ -264,6 +301,7 @@ function getSpendComparison(items, range) {
     currentLabel,
     previousLabel,
     dataThroughLabel: formatShortDate(dataThroughDate),
+    hasAnyTravel,
   };
 }
 
@@ -287,28 +325,54 @@ function formatAxisValue(value) {
 }
 
 function createSmoothPath(points) {
-  if (points.length === 0) return "";
-  if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+  const n = points.length;
+  if (n === 0) return "";
+  if (n === 1) return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  if (n === 2) {
+    return `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)} L ${points[1].x.toFixed(2)} ${points[1].y.toFixed(2)}`;
+  }
 
-  return points.slice(0, -1).reduce((path, point, index) => {
-    const previous = points[index - 1] || point;
-    const next = points[index + 1];
-    const afterNext = points[index + 2] || next;
-    const minimumY = Math.min(point.y, next.y);
-    const maximumY = Math.max(point.y, next.y);
-    const controlOneY = Math.min(
-      maximumY,
-      Math.max(minimumY, point.y + (next.y - previous.y) / 6)
-    );
-    const controlTwoY = Math.min(
-      maximumY,
-      Math.max(minimumY, next.y - (afterNext.y - point.y) / 6)
-    );
+  const dx = [];
+  const dy = [];
+  const slopes = [];
+  for (let i = 0; i < n - 1; i++) {
+    const deltaX = points[i + 1].x - points[i].x;
+    const deltaY = points[i + 1].y - points[i].y;
+    dx.push(deltaX);
+    dy.push(deltaY);
+    slopes.push(deltaX !== 0 ? deltaY / deltaX : 0);
+  }
 
-    return `${path} C ${point.x + (next.x - previous.x) / 6} ${controlOneY}, ${
-      next.x - (afterNext.x - point.x) / 6
-    } ${controlTwoY}, ${next.x} ${next.y}`;
-  }, `M ${points[0].x} ${points[0].y}`);
+  const tangents = new Array(n);
+  tangents[0] = slopes[0];
+  tangents[n - 1] = slopes[n - 2];
+
+  for (let i = 1; i < n - 1; i++) {
+    const s0 = slopes[i - 1];
+    const s1 = slopes[i];
+    if (s0 * s1 <= 0) {
+      tangents[i] = 0;
+    } else {
+      tangents[i] = (2 * s0 * s1) / (s0 + s1);
+    }
+  }
+
+  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = points[i];
+    const p1 = points[i + 1];
+    const segmentDx = dx[i] / 3;
+
+    const cp1x = (p0.x + segmentDx).toFixed(2);
+    const cp1y = (p0.y + tangents[i] * segmentDx).toFixed(2);
+
+    const cp2x = (p1.x - segmentDx).toFixed(2);
+    const cp2y = (p1.y - tangents[i + 1] * segmentDx).toFixed(2);
+
+    path += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p1.x.toFixed(2)} ${p1.y.toFixed(2)}`;
+  }
+
+  return path;
 }
 
 
@@ -525,16 +589,36 @@ function SortablePeriodDetails({ period }) {
           <tbody>
             {sortedItems.map((item, index) => {
               const itemName = getDetailItemName(item);
+              const isTravel = Boolean(item.isTravelLog);
 
               return (
                 <tr key={item.id || `${item.date}-${itemName}-${item.price}-${index}`}>
                   <td>
-                    <span
-                      className="analytics-detail-item-name"
-                      title={itemName}
-                    >
-                      {itemName}
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span
+                        className="analytics-detail-item-name"
+                        title={itemName}
+                      >
+                        {itemName}
+                      </span>
+                      {isTravel && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            padding: "1px 6px",
+                            borderRadius: "4px",
+                            backgroundColor: "rgba(245, 158, 11, 0.15)",
+                            color: "#d97706",
+                            fontWeight: 700,
+                            letterSpacing: "0.03em",
+                            textTransform: "uppercase",
+                            flexShrink: 0,
+                          }}
+                        >
+                          Travel
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td>{formatPaymentName(item.paymentType)}</td>
                   <td>{formatCurrency(item.price)}</td>
@@ -673,11 +757,13 @@ function SpendOverviewChart({
   comparison,
   selectedRange,
   items = [],
+  travelView = "expenses",
   shouldAnimate = false,
 }) {
-  const { series, currentLabel, previousLabel, dataThroughLabel } = comparison;
+  const { series, currentLabel, previousLabel, dataThroughLabel, hasAnyTravel } = comparison;
   const [activePoint, setActivePoint] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null);
+  const [lineFilter, setLineFilter] = useState("both"); // "both" | "expense" | "travel"
   const linePathRef = useRef(null);
   const areaPathRef = useRef(null);
   const revealClipRef = useRef(null);
@@ -695,26 +781,73 @@ function SpendOverviewChart({
   const selectedKey = selectedRange === "lastWeek" ? "previous" : "current";
   const selectedLabel =
     selectedKey === "previous" ? previousLabel : currentLabel;
+
+  // If travel is not selected globally or not present, force "expense" filter strictly
+  const effectiveFilter =
+    !hasAnyTravel || travelView === "expenses"
+      ? "expense"
+      : travelView === "travel"
+      ? "travel"
+      : lineFilter;
+
+  // Dynamic Y-axis scaling based on the effective line filter
   const numericValues = series
-    .map((item) => item[selectedKey])
-    .filter((value) => value !== null);
+    .map((item) => {
+      if (item[selectedKey] === null) return null;
+      if (effectiveFilter === "travel") {
+        return selectedKey === "previous" ? (item.previousTravel ?? 0) : (item.currentTravel ?? 0);
+      }
+      if (effectiveFilter === "expense") {
+        return selectedKey === "previous"
+          ? (item.previousExpense ?? item.previous ?? 0)
+          : (item.currentExpense ?? item.current ?? 0);
+      }
+      return item[selectedKey];
+    })
+    .filter((value) => value !== null && value !== undefined);
+
   const peakValue = Math.max(...numericValues, 0);
   const step = peakValue > 0 ? getNiceStep(peakValue / 4) : 25;
-  const maximum = step * 4;
+  const maximum = Math.max(step * 4, 1);
+
   const toPoint = (item, index, key) => {
     const value = item[key];
     if (value === null) return null;
 
+    const expenseValue =
+      key === "previous"
+        ? (item.previousExpense ?? value)
+        : (item.currentExpense ?? value);
+    const travelValue =
+      key === "previous"
+        ? (item.previousTravel ?? 0)
+        : (item.currentTravel ?? 0);
+
+    const plotValue =
+      effectiveFilter === "travel"
+        ? travelValue
+        : effectiveFilter === "expense"
+        ? expenseValue
+        : value;
+
     return {
       label: item.label,
       value,
+      expenseValue,
+      travelValue,
+      plotValue,
+      hasTravel: travelValue > 0,
+      hasExpense: expenseValue > 0,
       detailKey:
         key === "previous" ? item.previousDetailKey : item.currentDetailKey,
       detailType: item.detailType || "date",
       x: left + (index / divisor) * chartWidth,
-      y: top + chartHeight - (value / maximum) * chartHeight,
+      y: top + chartHeight - (plotValue / maximum) * chartHeight,
+      expenseY: top + chartHeight - (expenseValue / maximum) * chartHeight,
+      travelY: top + chartHeight - (travelValue / maximum) * chartHeight,
     };
   };
+
   const selectedPoints = series
     .map((item, index) => toPoint(item, index, selectedKey))
     .filter(Boolean);
@@ -726,14 +859,30 @@ function SpendOverviewChart({
       ? `${createSmoothPath(selectedPoints)} L ${lastPoint.x} ${baselineY} L ${firstPoint.x} ${baselineY} Z`
       : "";
   const linePath = createSmoothPath(selectedPoints);
-  const currentTotal = series.reduce(
-    (total, item) => total + (item.current || 0),
-    0
-  );
-  const previousTotal = series.reduce(
-    (total, item) => total + (item.previous || 0),
-    0
-  );
+  const hasTravelInView = selectedPoints.some((p) => p.hasTravel);
+  const expensePoints = selectedPoints.map((p) => ({
+    x: p.x,
+    y: p.expenseY,
+  }));
+  const expenseLinePath =
+    effectiveFilter === "both" && hasTravelInView && selectedPoints.length > 1
+      ? createSmoothPath(expensePoints)
+      : "";
+
+  const currentTotal = series.reduce((total, item) => {
+    if (item.current === null) return total;
+    if (effectiveFilter === "travel") return total + (item.currentTravel || 0);
+    if (effectiveFilter === "expense") return total + (item.currentExpense || 0);
+    return total + (item.current || 0);
+  }, 0);
+
+  const previousTotal = series.reduce((total, item) => {
+    if (item.previous === null) return total;
+    if (effectiveFilter === "travel") return total + (item.previousTravel || 0);
+    if (effectiveFilter === "expense") return total + (item.previousExpense || 0);
+    return total + (item.previous || 0);
+  }, 0);
+
   const spendDifference = currentTotal - previousTotal;
   const changePercentage =
     previousTotal > 0 ? (Math.abs(spendDifference) / previousTotal) * 100 : null;
@@ -754,6 +903,15 @@ function SpendOverviewChart({
       ? "spend-overview__change--more"
       : "spend-overview__change--less";
   const labelInterval = series.length <= 10 ? 1 : series.length <= 16 ? 2 : 5;
+
+  const modeTitle =
+    effectiveFilter === "travel"
+      ? "Travel"
+      : effectiveFilter === "expense"
+      ? "Daily Expense"
+      : "Total";
+  const effectiveCurrentLabel = `${currentLabel.replace(" Spend", "")} (${modeTitle})`;
+  const effectivePreviousLabel = `${previousLabel.replace(" Spend", "")} (${modeTitle})`;
 
   useLayoutEffect(() => {
     const lineElement = linePathRef.current;
@@ -846,15 +1004,104 @@ function SpendOverviewChart({
       cancelled = true;
       window.cancelAnimationFrame(animationFrame);
     };
-  }, [linePath, areaPath, selectedRange, shouldAnimate, chartWidth, left]);
+  }, [linePath, areaPath, selectedRange, effectiveFilter, shouldAnimate, chartWidth, left]);
 
   return (
     <div className="spend-overview">
       <div className="spend-overview__legend">
-        <span>
-          <i className="spend-overview__legend-line spend-overview__legend-line--current" />
-          {selectedLabel.replace(" Spend", "")}
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          {effectiveFilter === "both" && (
+            <>
+              <span>
+                <i className="spend-overview__legend-line spend-overview__legend-line--current" />
+                {hasTravelInView ? "Total Spend (Combined)" : selectedLabel.replace(" Spend", "")}
+              </span>
+              {hasTravelInView && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--reports-text, #334155)" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "16px",
+                      height: "3px",
+                      backgroundColor: "#06b6d4",
+                      borderTop: "2px dashed #06b6d4",
+                      borderRadius: "2px",
+                    }}
+                  />
+                  Daily Expenses
+                </span>
+              )}
+              {hasTravelInView && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "var(--reports-text, #334155)" }}>
+                  <span
+                    style={{
+                      display: "inline-block",
+                      width: "8px",
+                      height: "8px",
+                      backgroundColor: "#f59e0b",
+                      borderRadius: "50%",
+                      boxShadow: "0 0 0 2px rgba(245, 158, 11, 0.35)",
+                    }}
+                  />
+                  Travel Trips
+                </span>
+              )}
+            </>
+          )}
+
+          {effectiveFilter === "expense" && (
+            <span>
+              <i
+                className="spend-overview__legend-line"
+                style={{ backgroundColor: "#06b6d4", boxShadow: "0 0 8px rgba(6, 182, 212, 0.35)" }}
+              />
+              {selectedLabel.replace(" Spend", "")} {hasAnyTravel ? "(Daily Expenses Only)" : ""}
+            </span>
+          )}
+
+          {effectiveFilter === "travel" && (
+            <span>
+              <i
+                className="spend-overview__legend-line"
+                style={{ backgroundColor: "#f59e0b", boxShadow: "0 0 8px rgba(245, 158, 11, 0.35)" }}
+              />
+              {selectedLabel.replace(" Spend", "")} (Travel Only)
+            </span>
+          )}
+
+          {/* Graph line filter pills: switch between Combined, Expenses, or Travel */}
+          {hasAnyTravel && travelView === "both" && (
+            <div className="spend-overview-line-mode-pills" role="radiogroup" aria-label="Graph line mode">
+              <button
+                type="button"
+                className={`spend-pill ${effectiveFilter === "both" ? "spend-pill--active" : ""}`}
+                onClick={() => setLineFilter("both")}
+                title="Show combined total and expense dashed line"
+              >
+                <AppIcon name="layers" size={13} />
+                <span>Both</span>
+              </button>
+              <button
+                type="button"
+                className={`spend-pill ${effectiveFilter === "expense" ? "spend-pill--active" : ""}`}
+                onClick={() => setLineFilter("expense")}
+                title="Show daily expenses only"
+              >
+                <AppIcon name="briefcase" size={13} />
+                <span>Only Expense</span>
+              </button>
+              <button
+                type="button"
+                className={`spend-pill ${effectiveFilter === "travel" ? "spend-pill--active" : ""}`}
+                onClick={() => setLineFilter("travel")}
+                title="Show travel trips only"
+              >
+                <AppIcon name="plane" size={13} />
+                <span>Only Travel</span>
+              </button>
+            </div>
+          )}
+        </div>
         <span className="spend-overview__through">
           <AppIcon name="calendar" size={13} />
           Data through {dataThroughLabel}
@@ -869,9 +1116,35 @@ function SpendOverviewChart({
           onMouseLeave={() => setActivePoint(null)}
         >
           <defs>
-            <linearGradient id="spendOverviewArea" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" className="analytics-trend__area-stop analytics-trend__area-stop--top" />
-              <stop offset="100%" className="analytics-trend__area-stop analytics-trend__area-stop--bottom" />
+            <filter id="chartDotGlow" x="-50%" y="-50%" width="200%" height="200%">
+              <feDropShadow dx="0" dy="1.5" stdDeviation="2" floodColor="#000000" floodOpacity="0.25" />
+            </filter>
+            <linearGradient id="spendOverviewCombinedLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="var(--chart-combined-start, #6366f1)" />
+              <stop offset="100%" stopColor="var(--chart-combined-end, #0ea5e9)" />
+            </linearGradient>
+            <linearGradient id="spendOverviewExpenseLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="var(--chart-expense-start, #06b6d4)" />
+              <stop offset="100%" stopColor="var(--chart-expense-end, #0284c7)" />
+            </linearGradient>
+            <linearGradient id="spendOverviewTravelLine" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="var(--chart-travel-start, #f59e0b)" />
+              <stop offset="100%" stopColor="var(--chart-travel-end, #ea580c)" />
+            </linearGradient>
+            <linearGradient id="spendOverviewCombinedArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--chart-combined-start, #6366f1)" stopOpacity="0.22" />
+              <stop offset="70%" stopColor="var(--chart-combined-end, #0ea5e9)" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="var(--chart-combined-end, #0ea5e9)" stopOpacity="0.00" />
+            </linearGradient>
+            <linearGradient id="spendOverviewTravelArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--chart-travel-start, #f59e0b)" stopOpacity="0.25" />
+              <stop offset="70%" stopColor="var(--chart-travel-end, #ea580c)" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="var(--chart-travel-end, #ea580c)" stopOpacity="0.00" />
+            </linearGradient>
+            <linearGradient id="spendOverviewExpenseArea" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--chart-expense-start, #06b6d4)" stopOpacity="0.22" />
+              <stop offset="70%" stopColor="var(--chart-expense-end, #0284c7)" stopOpacity="0.05" />
+              <stop offset="100%" stopColor="var(--chart-expense-end, #0284c7)" stopOpacity="0.00" />
             </linearGradient>
             <clipPath id={revealClipId} clipPathUnits="userSpaceOnUse">
               <rect
@@ -894,6 +1167,9 @@ function SpendOverviewChart({
                   y1={y}
                   x2={width - right}
                   y2={y}
+                  stroke="var(--chart-grid-line, rgba(148, 163, 184, 0.2))"
+                  strokeWidth="1"
+                  strokeDasharray="3 4"
                   className="analytics-trend__grid"
                 />
                 <text
@@ -912,7 +1188,33 @@ function SpendOverviewChart({
             <path
               ref={areaPathRef}
               d={areaPath}
-              className="analytics-trend__area analytics-trend__area--current"
+              fill={
+                effectiveFilter === "travel"
+                  ? "url(#spendOverviewTravelArea)"
+                  : effectiveFilter === "expense"
+                  ? "url(#spendOverviewExpenseArea)"
+                  : "url(#spendOverviewCombinedArea)"
+              }
+              className={`analytics-trend__area ${
+                effectiveFilter === "travel"
+                  ? "analytics-trend__area--travel"
+                  : "analytics-trend__area--current"
+              }`}
+              clipPath={`url(#${revealClipId})`}
+            />
+          )}
+
+          {/* Daily Expense dashed line (in "both" mode) */}
+          {expenseLinePath && (
+            <path
+              d={expenseLinePath}
+              fill="none"
+              stroke="var(--chart-expense-start, #06b6d4)"
+              strokeWidth="2"
+              strokeDasharray="4 4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="analytics-trend__line--expense"
               clipPath={`url(#${revealClipId})`}
             />
           )}
@@ -920,49 +1222,227 @@ function SpendOverviewChart({
           <path
             ref={linePathRef}
             d={linePath}
+            fill="none"
+            stroke={
+              effectiveFilter === "travel"
+                ? "url(#spendOverviewTravelLine)"
+                : effectiveFilter === "expense"
+                ? "url(#spendOverviewExpenseLine)"
+                : "url(#spendOverviewCombinedLine)"
+            }
+            strokeWidth="3.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             className="analytics-trend__line analytics-trend__line--current"
             clipPath={`url(#${revealClipId})`}
           />
 
-          {lastPoint && (
+          {lastPoint && lastPoint.plotValue > 0 && (
             <g
               ref={terminalPointRef}
               className="analytics-trend__terminal-point"
               aria-hidden="true"
             >
-              <circle cx={lastPoint.x} cy={lastPoint.y} r="8" />
-              <circle cx={lastPoint.x} cy={lastPoint.y} r="3.8" />
+              <circle
+                cx={lastPoint.x}
+                cy={lastPoint.y}
+                r="9"
+                fill={
+                  effectiveFilter === "travel"
+                    ? "var(--chart-travel-start, #f59e0b)"
+                    : effectiveFilter === "expense"
+                    ? "var(--chart-expense-start, #06b6d4)"
+                    : "var(--chart-combined-start, #6366f1)"
+                }
+                opacity="0.25"
+              />
+              <circle
+                cx={lastPoint.x}
+                cy={lastPoint.y}
+                r="4"
+                fill={
+                  effectiveFilter === "travel"
+                    ? "var(--chart-travel-start, #f59e0b)"
+                    : effectiveFilter === "expense"
+                    ? "var(--chart-expense-start, #06b6d4)"
+                    : "var(--chart-combined-start, #6366f1)"
+                }
+              />
             </g>
           )}
 
-          {selectedPoints.length === 1 && selectedPoints.map((point) => (
-            <circle
-              key={`visible-${point.label}`}
-              cx={point.x}
-              cy={point.y}
-              r="4"
-              className="analytics-trend__visible-point"
-            />
-          ))}
+          {/* Visible interactive data dots for ALL points with clear visual hierarchy */}
+          {selectedPoints.map((point, index) => {
+            const isZero = point.plotValue === 0;
+            const isSelected = activePoint?.x === point.x;
+
+            if (isZero) {
+              return (
+                <circle
+                  key={`zero-dot-${point.label}-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={isSelected ? 4 : 2}
+                  fill={isSelected ? "var(--reports-primary, #6366f1)" : "var(--chart-grid-line, #94a3b8)"}
+                  opacity={isSelected ? 0.9 : 0.35}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setActivePoint(point);
+                    setSelectedDetail(point);
+                  }}
+                />
+              );
+            }
+
+            if (effectiveFilter === "travel") {
+              return (
+                <g
+                  key={`travel-dot-${point.label}-${index}`}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setActivePoint(point);
+                    setSelectedDetail(point);
+                  }}
+                >
+                  {/* Subtle ambient aura ring around travel gem */}
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isSelected ? 11 : 8.5}
+                    fill="none"
+                    stroke="var(--chart-travel-start, #f59e0b)"
+                    strokeWidth={isSelected ? "2" : "1.4"}
+                    opacity={isSelected ? "0.9" : "0.55"}
+                  />
+                  {/* Primary amber gem dot */}
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isSelected ? 6.5 : 5}
+                    fill="var(--chart-travel-start, #f59e0b)"
+                    stroke="var(--chart-dot-border, #ffffff)"
+                    strokeWidth="2.5"
+                    filter="url(#chartDotGlow)"
+                  />
+                </g>
+              );
+            }
+
+            if (effectiveFilter === "expense") {
+              return (
+                <g
+                  key={`expense-dot-${point.label}-${index}`}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => {
+                    setActivePoint(point);
+                    setSelectedDetail(point);
+                  }}
+                >
+                  {isSelected && (
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r="10.5"
+                      fill="none"
+                      stroke="var(--chart-expense-start, #06b6d4)"
+                      strokeWidth="2"
+                      opacity="0.75"
+                    />
+                  )}
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isSelected ? 6.5 : 4.8}
+                    fill="var(--chart-expense-start, #06b6d4)"
+                    stroke="var(--chart-dot-border, #ffffff)"
+                    strokeWidth="2.5"
+                    filter="url(#chartDotGlow)"
+                  />
+                </g>
+              );
+            }
+
+            // Both (Combined) mode
+            const hasTravel = point.hasTravel;
+            const hasExpense = point.hasExpense;
+
+            return (
+              <g
+                key={`both-dot-${point.label}-${index}`}
+                style={{ cursor: "pointer" }}
+                onClick={() => {
+                  setActivePoint(point);
+                  setSelectedDetail(point);
+                }}
+              >
+                {/* For days with travel: amber aura */}
+                {hasTravel && (
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isSelected ? 11 : 8.5}
+                    fill="none"
+                    stroke="var(--chart-travel-start, #f59e0b)"
+                    strokeWidth={isSelected ? "2" : "1.4"}
+                    opacity={isSelected ? "0.9" : "0.55"}
+                  />
+                )}
+
+                {/* Primary gem on combined curve */}
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r={isSelected ? 6.5 : hasTravel ? 5.5 : 4.8}
+                  fill={
+                    hasTravel
+                      ? "var(--chart-travel-start, #f59e0b)"
+                      : "var(--chart-combined-start, #6366f1)"
+                  }
+                  stroke="var(--chart-dot-border, #ffffff)"
+                  strokeWidth="2.5"
+                  filter="url(#chartDotGlow)"
+                />
+
+                {/* If point has both daily expense and travel, cyan gem at daily expense level */}
+                {hasTravel && hasExpense && (
+                  <circle
+                    cx={point.x}
+                    cy={point.expenseY}
+                    r={isSelected ? 4.5 : 3.5}
+                    fill="var(--chart-expense-start, #06b6d4)"
+                    stroke="var(--chart-dot-border, #ffffff)"
+                    strokeWidth="1.8"
+                    filter="url(#chartDotGlow)"
+                  />
+                )}
+              </g>
+            );
+          })}
 
           {selectedPoints.map((point, index) => (
             <circle
               key={`${point.label}-${point.value}-${index}`}
               cx={point.x}
               cy={point.y}
-              r="12"
+              r="14"
               className="analytics-trend__hit-area"
               onMouseEnter={() => setActivePoint(point)}
               onFocus={() => setActivePoint(point)}
-              onClick={() => setActivePoint(point)}
+              onClick={() => {
+                setActivePoint(point);
+                setSelectedDetail(point);
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
                   setActivePoint(point);
+                  setSelectedDetail(point);
                 }
               }}
               tabIndex="0"
-              aria-label={`${point.label}: ${formatCurrency(point.value)}`}
+              aria-label={`${point.label}: ${formatCurrency(point.plotValue)}${
+                point.hasTravel ? " (includes travel)" : ""
+              }`}
             />
           ))}
 
@@ -973,37 +1453,85 @@ function SpendOverviewChart({
                 y1={top}
                 x2={activePoint.x}
                 y2={baselineY}
+                stroke="var(--chart-crosshair, rgba(100, 116, 139, 0.4))"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
                 className="analytics-trend__crosshair"
+              />
+              {/* Outer halo */}
+              <circle
+                cx={activePoint.x}
+                cy={activePoint.y}
+                r="13"
+                fill="none"
+                stroke={
+                  effectiveFilter === "travel"
+                    ? "var(--chart-travel-start, #f59e0b)"
+                    : effectiveFilter === "expense"
+                    ? "var(--chart-expense-start, #06b6d4)"
+                    : activePoint.hasTravel
+                    ? "var(--chart-travel-start, #f59e0b)"
+                    : "var(--chart-combined-start, #6366f1)"
+                }
+                strokeWidth="2"
+                opacity="0.4"
               />
               <circle
                 cx={activePoint.x}
                 cy={activePoint.y}
-                r="5"
+                r="6.5"
                 className="analytics-trend__active-dot"
+                fill={
+                  effectiveFilter === "travel"
+                    ? "var(--chart-travel-start, #f59e0b)"
+                    : effectiveFilter === "expense"
+                    ? "var(--chart-expense-start, #06b6d4)"
+                    : activePoint.hasTravel
+                    ? "var(--chart-travel-start, #f59e0b)"
+                    : "var(--chart-combined-start, #6366f1)"
+                }
+                stroke="var(--chart-dot-border, #ffffff)"
+                strokeWidth="2.5"
+                filter="url(#chartDotGlow)"
               />
               {(() => {
-                const tooltipWidth = 176;
-                const tooltipHeight = 48;
+                const showBreakdown = effectiveFilter === "both" && activePoint.hasTravel;
+                const tooltipWidth = showBreakdown ? 220 : 180;
+                const tooltipHeight = showBreakdown ? 66 : 50;
                 const tooltipX = Math.min(
                   Math.max(activePoint.x - tooltipWidth / 2, left + 8),
                   width - right - tooltipWidth - 8
                 );
                 const tooltipY = Math.max(activePoint.y - tooltipHeight - 14, top + 8);
 
+                const mainText =
+                  effectiveFilter === "travel"
+                    ? `Travel: ${formatCurrency(activePoint.travelValue)}`
+                    : effectiveFilter === "expense"
+                    ? `Expense: ${formatCurrency(activePoint.expenseValue)}`
+                    : activePoint.hasTravel
+                    ? `Total: ${formatCurrency(activePoint.value)}`
+                    : `Spend: ${formatCurrency(activePoint.value)}`;
+
                 return (
                   <g className="analytics-trend__svg-tooltip" transform={`translate(${tooltipX} ${tooltipY})`}>
                     <rect
                       width={tooltipWidth}
                       height={tooltipHeight}
-                      rx="9"
+                      rx="8"
                       className="analytics-trend__tooltip-box"
                     />
-                    <text x="10" y="16" className="analytics-trend__tooltip-title">
+                    <text x="12" y="17" className="analytics-trend__tooltip-title">
                       {activePoint.label}
                     </text>
-                    <text x="10" y="35" className="analytics-trend__tooltip-value">
-                      Spend: {formatCurrency(activePoint.value)}
+                    <text x="12" y="35" className="analytics-trend__tooltip-value">
+                      {mainText}
                     </text>
+                    {showBreakdown && (
+                      <text x="12" y="52" className="analytics-trend__tooltip-breakdown" fill="var(--chart-travel-start, #f59e0b)" fontSize="11" fontWeight="600">
+                        Daily: {formatCurrency(activePoint.expenseValue)} · Travel: {formatCurrency(activePoint.travelValue)}
+                      </text>
+                    )}
                     <g
                       className="analytics-trend__details-button"
                       role="button"
@@ -1019,13 +1547,13 @@ function SpendOverviewChart({
                     >
                       <rect
                         className="analytics-trend__details-hitbox"
-                        x="105"
-                        y="20"
-                        width="61"
-                        height="20"
+                        x={tooltipWidth - 75}
+                        y={showBreakdown ? 22 : 18}
+                        width="70"
+                        height="24"
                         rx="4"
                       />
-                      <text x="166" y="35" textAnchor="end">View details</text>
+                      <text x={tooltipWidth - 10} y={showBreakdown ? 37 : 34} textAnchor="end">View details ›</text>
                     </g>
                   </g>
                 );
@@ -1067,7 +1595,18 @@ function SpendOverviewChart({
           <div className="spend-overview__mobile-point-card" role="status">
             <div className="spend-overview__mobile-point-copy">
               <span>{activePoint.label}</span>
-              <strong>Spend: {formatCurrency(activePoint.value)}</strong>
+              <strong>
+                {effectiveFilter === "travel"
+                  ? `Travel: ${formatCurrency(activePoint.travelValue)}`
+                  : effectiveFilter === "expense"
+                  ? `Expense: ${formatCurrency(activePoint.expenseValue)}`
+                  : `Spend: ${formatCurrency(activePoint.value)}`}
+              </strong>
+              {effectiveFilter === "both" && activePoint.hasTravel && (
+                <small style={{ color: "#f59e0b", display: "block", marginTop: "2px", fontWeight: 600 }}>
+                  Daily: {formatCurrency(activePoint.expenseValue)} · Travel: {formatCurrency(activePoint.travelValue)}
+                </small>
+              )}
             </div>
             <button
               type="button"
@@ -1082,11 +1621,11 @@ function SpendOverviewChart({
 
       <div className="spend-overview__summary">
         <div>
-          <span>{currentLabel}</span>
+          <span>{effectiveCurrentLabel}</span>
           <strong>{formatCurrency(currentTotal)}</strong>
         </div>
         <div>
-          <span>{previousLabel}</span>
+          <span>{effectivePreviousLabel}</span>
           <strong>{formatCurrency(previousTotal)}</strong>
         </div>
         <span className={`spend-overview__change ${changeClass}`}>
@@ -1267,6 +1806,10 @@ function isEssentialExpense(item) {
   const essentialWords = [
     "bus",
     "train",
+    "mixed",
+    "flight",
+    "auto",
+    "travel",
     "office",
     "home",
     "room",
@@ -1283,7 +1826,7 @@ function isEssentialExpense(item) {
     "medical",
   ];
 
-  if (["bus", "food"].includes(type)) return true;
+  if (["bus", "train", "mixed", "flight", "auto", "travel", "food"].includes(type)) return true;
   return essentialWords.some((word) => name.includes(word));
 }
 
@@ -1401,7 +1944,7 @@ function DistributionDonut({ mode, analytics }) {
   });
   const activeItem = activeIndex !== null ? data[activeIndex] : null;
   const centerValue = activeItem ? activeItem.value : total;
-  const centerLabel = activeItem ? capitalize(activeItem.label) : config.centerLabel;
+  const centerLabel = activeItem ? formatCategoryLabel(activeItem.label) : config.centerLabel;
   const activePercent = activeItem && total > 0 ? Math.round((activeItem.value / total) * 100) : null;
 
   if (!total) {
@@ -1443,7 +1986,7 @@ function DistributionDonut({ mode, analytics }) {
                 onMouseEnter={() => setActiveIndex(index)}
                 onFocus={() => setActiveIndex(index)}
                 tabIndex="0"
-                aria-label={`${capitalize(item.label)}: ${formatCurrency(item.value)}`}
+                aria-label={`${formatCategoryLabel(item.label)}: ${formatCurrency(item.value)}`}
               />
             );
           })}
@@ -1454,7 +1997,11 @@ function DistributionDonut({ mode, analytics }) {
         </div>
       </div>
 
-      <div className="distribution-donut__legend" onMouseLeave={() => setActiveIndex(null)}>
+      <div
+        className="distribution-donut__legend"
+        style={{ maxHeight: "300px", overflowY: "auto", paddingRight: "4px" }}
+        onMouseLeave={() => setActiveIndex(null)}
+      >
         <div className="distribution-donut__legend-heading">
           <span>{config.title}</span>
           <strong>{formatCurrency(total)}</strong>
@@ -1475,7 +2022,7 @@ function DistributionDonut({ mode, analytics }) {
             >
               <span className={`distribution-donut__dot distribution-donut__dot--${index % 7}`} />
               <span className="distribution-donut__legend-label">
-                {capitalize(item.label)}
+                {formatCategoryLabel(item.label)}
               </span>
               <strong>{formatCurrency(item.value)}</strong>
               <small>{percentage.toFixed(0)}%</small>
@@ -1522,7 +2069,7 @@ function PaymentSplit({ cashTotal, gpayTotal }) {
   );
 }
 
-export function ReportsAnalytics({ items = [] }) {
+export function ReportsAnalytics({ items = [], travelView = "expenses" }) {
   const [trendRange, setTrendRange] = useState("thisWeek");
   const [distributionMode, setDistributionMode] = useState("type");
   const [trendRef, trendRevealed] = useRevealOnView();
@@ -1563,9 +2110,9 @@ export function ReportsAnalytics({ items = [] }) {
 
     return {
       spendComparison: getSpendComparison(items, trendRange),
-      typeSeries: toSortedSeries(typeTotals, 6),
+      typeSeries: toSortedSeries(typeTotals, 30),
       periodSeries: orderedPeriods,
-      itemSeries: toSortedSeries(itemTotals, 6),
+      itemSeries: toSortedSeries(itemTotals, 20),
       dailySeries,
       cashTotal,
       gpayTotal,
@@ -1609,10 +2156,11 @@ export function ReportsAnalytics({ items = [] }) {
             </label>
           </div>
           <SpendOverviewChart
-            key={trendRange}
+            key={`${trendRange}-${travelView}`}
             comparison={analytics.spendComparison}
             selectedRange={trendRange}
             items={items}
+            travelView={travelView}
             shouldAnimate={trendRevealed}
           />
         </article>
@@ -1664,6 +2212,9 @@ function ReportSummaryCards({
   yearTotal = 0,
   mostSpentDay,
   mostUsedItem,
+  includeTravel = false,
+  travelView = "expenses",
+  travelStats = { total: 0, count: 0 },
 }) {
   const mostUsedItemName = mostUsedItem?.name
     ? capitalize(mostUsedItem.name)
@@ -1676,7 +2227,53 @@ function ReportSummaryCards({
           <span className="reports-section-heading__eyebrow">Overview</span>
           <h3 id="summary-title">Spending Summary</h3>
         </div>
-        <p>Updates automatically with active filters.</p>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {travelView === "travel" && travelStats?.count > 0 && (
+            <div
+              className="report-travel-breakdown-banner"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 12px",
+                borderRadius: "20px",
+                background: "rgba(245, 158, 11, 0.14)",
+                border: "1px solid rgba(245, 158, 11, 0.35)",
+                fontSize: "0.8rem",
+                color: "#d97706",
+                fontWeight: "600",
+              }}
+            >
+              <AppIcon name="plane" size={14} />
+              <span>
+                Showing only travel expenses ({travelStats.count} trips totaling {formatCurrency(travelStats.total)})
+              </span>
+            </div>
+          )}
+          {travelView === "both" && travelStats?.count > 0 && (
+            <div
+              className="report-travel-breakdown-banner"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "4px 12px",
+                borderRadius: "20px",
+                background: "color-mix(in srgb, var(--primary, #0ea5e9) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--primary, #0ea5e9) 28%, transparent)",
+                fontSize: "0.8rem",
+                color: "var(--primary, #0284c7)",
+                fontWeight: "600",
+              }}
+            >
+              <AppIcon name="plane" size={14} />
+              <span>
+                Includes {formatCurrency(travelStats.total)} from {travelStats.count} travel trips
+              </span>
+            </div>
+          )}
+          <p>Updates automatically with active filters.</p>
+        </div>
       </div>
 
       <div className="report-primary-grid">

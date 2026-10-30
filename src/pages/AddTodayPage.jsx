@@ -259,7 +259,7 @@ function AddTodayPage() {
       } else {
         notify({
           type: "success",
-          title: "Balance updated",
+          title: result.action === "replace" ? "Balance replaced" : "Balance updated",
           message: `${result.balanceType === "gpay" ? "GPay" : "Cash"} Balance is now ${formatCurrency(
             result.newBalance
           )}.`,

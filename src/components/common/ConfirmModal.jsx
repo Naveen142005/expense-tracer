@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import Button from "./Button";
 
-export function DetailModal({ isOpen, title, fields = [], onClose }) {
+export function DetailModal({ isOpen, title, fields = [], footer = null, onClose }) {
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -53,6 +53,21 @@ export function DetailModal({ isOpen, title, fields = [], onClose }) {
             </div>
           ))}
         </dl>
+        {footer && (
+          <div
+            className="history-detail-modal__footer"
+            style={{
+              marginTop: "20px",
+              paddingTop: "14px",
+              borderTop: "1px solid var(--border-color, rgba(140,160,190,0.2))",
+              display: "flex",
+              justifyContent: "flex-end",
+              gap: "10px",
+            }}
+          >
+            {footer}
+          </div>
+        )}
       </section>
     </div>,
     document.body

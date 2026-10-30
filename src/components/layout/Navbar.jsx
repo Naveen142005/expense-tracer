@@ -8,6 +8,7 @@ import { useEditLock } from "../../context/EditLockContext";
 import { useFeedback } from "../../context/FeedbackContext";
 import { useTheme } from "../../hooks/useTheme";
 import { hasUnsavedTodayDraft } from "../../utils/draftStorage";
+import { getTravelTrackerUrl } from "../../services/travelTrackerService";
 
 const navItems = [
   { to: "/", label: "Add Today", icon: "wallet", end: true },
@@ -158,6 +159,17 @@ function Navbar() {
       </nav>
 
       <div className="navbar__utilities">
+        <a
+          href={getTravelTrackerUrl()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="navbar__utility-btn navbar__utility-btn--travel"
+          aria-label="Open Travel Tracker"
+          title="Open Travel Tracker"
+        >
+          <AppIcon name="plane" size={18} />
+        </a>
+
         <button
           type="button"
           className="navbar__utility-btn"
@@ -223,6 +235,27 @@ function Navbar() {
                     >
                       Profile
                     </button>
+
+                    <a
+                      href={getTravelTrackerUrl()}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      role="menuitem"
+                      onClick={() => setProfileMenuOpen(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        padding: "10px 14px",
+                        color: "inherit",
+                        textDecoration: "none",
+                        fontSize: "0.875rem",
+                        fontWeight: "500",
+                      }}
+                    >
+                      <AppIcon name="plane" size={16} />
+                      <span>Travel Tracker ↗</span>
+                    </a>
 
                     <button
                       type="button"

@@ -10,6 +10,10 @@ export const EXPENSE_TYPES = [
   { label: "Food", value: "food" },
   { label: "Snacks", value: "snacks" },
   { label: "Bus", value: "bus" },
+  { label: "Train", value: "train" },
+  { label: "Flight", value: "flight" },
+  { label: "Auto", value: "auto" },
+  { label: "Mixed Travel", value: "mixed" },
   { label: "Custom", value: "custom" },
 ];
 
@@ -45,6 +49,7 @@ export const DEFAULT_EXPENSE_ITEM = {
 export const BALANCE_ACTIONS = {
   ADD: "add",
   REDUCE: "reduce",
+  REPLACE: "replace",
   EXPENSE_CASH_DEDUCTION: "expense_cash_deduction",
   EXPENSE_GPAY_DEDUCTION: "expense_gpay_deduction",
   EDIT_CASH_DEDUCTION: "edit_cash_deduction",

@@ -58,13 +58,23 @@ export async function adjustBalance({
     throw new Error("Select Cash Balance or GPay Balance.");
   }
 
-  if (![BALANCE_ACTIONS.ADD, BALANCE_ACTIONS.REDUCE].includes(action)) {
+  if (
+    ![
+      BALANCE_ACTIONS.ADD,
+      BALANCE_ACTIONS.REDUCE,
+      BALANCE_ACTIONS.REPLACE,
+    ].includes(action)
+  ) {
     throw new Error("Invalid balance action.");
   }
 
   const amountNumber = toNumber(amount);
 
-  if (amountNumber <= 0) {
+  if (action === BALANCE_ACTIONS.REPLACE) {
+    if (amountNumber < 0) {
+      throw new Error("Balance replacement amount cannot be negative.");
+    }
+  } else if (amountNumber <= 0) {
     throw new Error("Balance adjustment amount must be greater than zero.");
   }
 
@@ -82,25 +92,29 @@ export async function adjustBalance({
         ? oldBalances.cashBalance
         : oldBalances.gpayBalance;
 
-    const calculatedNewBalance =
-      action === BALANCE_ACTIONS.ADD
-        ? selectedOldBalance + amountNumber
-        : selectedOldBalance - amountNumber;
+    let calculatedNewBalance;
+    let appliedAmount;
+    let shortfall = 0;
+
+    if (action === BALANCE_ACTIONS.REPLACE) {
+      calculatedNewBalance = amountNumber;
+      appliedAmount = Math.abs(calculatedNewBalance - selectedOldBalance);
+    } else if (action === BALANCE_ACTIONS.ADD) {
+      calculatedNewBalance = selectedOldBalance + amountNumber;
+      appliedAmount = amountNumber;
+    } else {
+      calculatedNewBalance = selectedOldBalance - amountNumber;
+    }
 
     const selectedNewBalance =
       balanceType === "gpay"
         ? Math.max(0, calculatedNewBalance)
         : calculatedNewBalance;
 
-    const appliedAmount =
-      action === BALANCE_ACTIONS.ADD
-        ? amountNumber
-        : selectedOldBalance - selectedNewBalance;
-
-    const shortfall =
-      action === BALANCE_ACTIONS.REDUCE
-        ? Math.max(0, amountNumber - appliedAmount)
-        : 0;
+    if (action === BALANCE_ACTIONS.REDUCE) {
+      appliedAmount = selectedOldBalance - selectedNewBalance;
+      shortfall = Math.max(0, amountNumber - appliedAmount);
+    }
 
     const newCashBalance =
       balanceType === "cash"
@@ -133,7 +147,11 @@ export async function adjustBalance({
       amount: amountNumber,
       appliedAmount,
       shortfall,
-      reason: reason || "Manual balance adjustment",
+      reason:
+        reason ||
+        (action === BALANCE_ACTIONS.REPLACE
+          ? `Balance replaced from ${selectedOldBalance} to ${selectedNewBalance}`
+          : "Manual balance adjustment"),
       oldBalance: selectedOldBalance,
       newBalance: selectedNewBalance,
       oldTotalBalance: oldBalances.totalBalance,

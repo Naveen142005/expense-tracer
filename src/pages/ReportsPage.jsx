@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BalanceHistoryTable from "../components/balance/BalanceHistoryTable";
+import AppIcon from "../components/common/AppIcon";
 import Loading from "../components/common/Loading";
 import ExportButtons from "../components/reports/ExportButtons";
 import FullHistoryTable from "../components/reports/FullHistoryTable";
@@ -12,6 +13,11 @@ import {
   getAllBalanceHistoryForReport,
   getAllExpensesForReport,
 } from "../firebase/reportQueryService";
+import {
+  fetchTravelTrips,
+  mergeExpensesWithTravel,
+  getTravelExpensesOnly,
+} from "../services/travelTrackerService";
 import {
   getReportOverview,
   getReportRecordCounts,
@@ -68,6 +74,11 @@ function ReportsPage() {
   const [error, setError] = useState("");
   const [lastUpdated, setLastUpdated] = useState("");
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [travelView, setTravelView] = useState("expenses"); // "expenses" | "both" | "travel"
+  const includeTravel = travelView !== "expenses";
+  const [travelTrips, setTravelTrips] = useState([]);
+  const [travelLoading, setTravelLoading] = useState(false);
+  const [travelError, setTravelError] = useState("");
   const expenseLoadPromiseRef = useRef(null);
   const balanceLoadPromiseRef = useRef(null);
 
@@ -137,6 +148,11 @@ function ReportsPage() {
       if (background && fullBalanceLoaded) {
         await ensureFullBalanceHistory({ force: true });
       }
+      if (background && travelView !== "expenses") {
+        fetchTravelTrips({ force: true })
+          .then((trips) => setTravelTrips(trips))
+          .catch(console.error);
+      }
       setLastUpdated(
         new Intl.DateTimeFormat(undefined, {
           hour: "2-digit",
@@ -152,6 +168,37 @@ function ReportsPage() {
       setRefreshing(false);
     }
   }
+
+  const handleSelectTravelView = useCallback(
+    async (nextView) => {
+      if (nextView === travelView) return;
+
+      if (nextView === "expenses") {
+        setTravelView("expenses");
+        return;
+      }
+
+      try {
+        setTravelLoading(true);
+        setTravelError("");
+        let trips = travelTrips;
+        if (trips.length === 0) {
+          trips = await fetchTravelTrips();
+          setTravelTrips(trips);
+        }
+        if (nextView === "both" && !fullExpensesLoaded) {
+          ensureFullExpenses().catch(console.error);
+        }
+        setTravelView(nextView);
+      } catch (err) {
+        console.error("Failed to load travel tracker trips:", err);
+        setTravelError("Unable to load travel data from Travel Tracker.");
+      } finally {
+        setTravelLoading(false);
+      }
+    },
+    [travelView, travelTrips, fullExpensesLoaded, ensureFullExpenses]
+  );
 
   useEffect(() => {
     loadReports();
@@ -184,8 +231,18 @@ function ReportsPage() {
     setIsMobileFilterOpen(false);
   }
 
+  const allExpenses = useMemo(() => {
+    if (travelView === "travel") {
+      return getTravelExpensesOnly(travelTrips);
+    }
+    if (travelView === "both" && travelTrips.length > 0) {
+      return mergeExpensesWithTravel(expenses, travelTrips);
+    }
+    return expenses;
+  }, [travelView, expenses, travelTrips]);
+
   const filteredExpenses = useMemo(() => {
-    return expenses.filter((item) => {
+    return allExpenses.filter((item) => {
       const dateMatch = isDateInRange(
         item.date,
         filters.startDate,
@@ -203,10 +260,10 @@ function ReportsPage() {
 
       return dateMatch && typeMatch && paymentMatch && periodMatch;
     });
-  }, [expenses, filters]);
+  }, [allExpenses, filters]);
 
   const analyticsExpenses = useMemo(() => {
-    return expenses.filter((item) => {
+    return allExpenses.filter((item) => {
       const typeMatch = filters.type === "all" || item.type === filters.type;
       const paymentMatch =
         filters.paymentType === "all" ||
@@ -216,7 +273,17 @@ function ReportsPage() {
 
       return typeMatch && paymentMatch && periodMatch;
     });
-  }, [expenses, filters.type, filters.paymentType, filters.period]);
+  }, [allExpenses, filters.type, filters.paymentType, filters.period]);
+
+  const travelStats = useMemo(() => {
+    if (travelView === "expenses") return { total: 0, count: 0, mode: "expenses" };
+    const travelItems = filteredExpenses.filter((item) => item.isTravelLog);
+    return {
+      total: calculateTotal(travelItems),
+      count: travelItems.length,
+      mode: travelView,
+    };
+  }, [filteredExpenses, travelView]);
 
   const activeFilterCount = useMemo(() => {
     const applicableKeys =
@@ -262,83 +329,83 @@ function ReportsPage() {
 
   const lifetimeTotal = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? calculateTotal(filteredExpenses)
         : toNumber(overview?.lifetimeTotal),
-    [filteredExpenses, fullExpensesLoaded, overview]
+    [filteredExpenses, fullExpensesLoaded, includeTravel, overview]
   );
 
   const lifetimeCashTotal = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? calculateCashTotal(filteredExpenses)
         : toNumber(overview?.lifetimeCashTotal),
-    [filteredExpenses, fullExpensesLoaded, overview]
+    [filteredExpenses, fullExpensesLoaded, includeTravel, overview]
   );
 
   const lifetimeGPayTotal = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? calculateGPayTotal(filteredExpenses)
         : toNumber(overview?.lifetimeGPayTotal),
-    [filteredExpenses, fullExpensesLoaded, overview]
+    [filteredExpenses, fullExpensesLoaded, includeTravel, overview]
   );
 
   const todayTotal = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? calculateTotal(
             filteredExpenses.filter((item) => item.date === todayDate)
           )
         : toNumber(overview?.todayTotal),
-    [filteredExpenses, fullExpensesLoaded, overview, todayDate]
+    [filteredExpenses, fullExpensesLoaded, includeTravel, overview, todayDate]
   );
 
   const monthTotal = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? calculateTotal(
             filteredExpenses.filter((item) =>
               isSameMonth(item.date, currentMonth)
             )
           )
         : toNumber(overview?.monthTotal),
-    [filteredExpenses, currentMonth, fullExpensesLoaded, overview]
+    [filteredExpenses, currentMonth, fullExpensesLoaded, includeTravel, overview]
   );
 
   const yearTotal = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? calculateTotal(
             filteredExpenses.filter((item) =>
               isSameYear(item.date, currentYear)
             )
           )
         : toNumber(overview?.yearTotal),
-    [filteredExpenses, currentYear, fullExpensesLoaded, overview]
+    [filteredExpenses, currentYear, fullExpensesLoaded, includeTravel, overview]
   );
 
   const mostSpentDay = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? getMostSpentDay(filteredExpenses)
         : overview?.mostSpentDay,
-    [filteredExpenses, fullExpensesLoaded, overview]
+    [filteredExpenses, fullExpensesLoaded, includeTravel, overview]
   );
 
   const mostUsedItem = useMemo(
     () =>
-      fullExpensesLoaded
+      fullExpensesLoaded || includeTravel
         ? getMostUsedItem(filteredExpenses)
         : overview?.mostUsedItem,
-    [filteredExpenses, fullExpensesLoaded, overview]
+    [filteredExpenses, fullExpensesLoaded, includeTravel, overview]
   );
 
   function renderActiveReport() {
     const requiresDetailedExpenses =
       ["analytics", "export"].includes(activeReport) || activeFilterCount > 0;
 
-    if (requiresDetailedExpenses && !fullExpensesLoaded) {
+    if (requiresDetailedExpenses && !fullExpensesLoaded && !includeTravel) {
       return <Loading message="Loading complete report data..." />;
     }
 
@@ -349,6 +416,8 @@ function ReportsPage() {
           refreshKey={refreshVersion}
           onOpenFilters={() => setIsMobileFilterOpen(true)}
           activeFilterCount={activeFilterCount}
+          includeTravel={includeTravel}
+          combinedExpenses={filteredExpenses}
         />
       );
     }
@@ -365,8 +434,11 @@ function ReportsPage() {
             yearTotal={yearTotal}
             mostSpentDay={mostSpentDay}
             mostUsedItem={mostUsedItem}
+            includeTravel={includeTravel}
+            travelView={travelView}
+            travelStats={travelStats}
           />
-          <ReportsAnalytics items={analyticsExpenses} />
+          <ReportsAnalytics items={analyticsExpenses} travelView={travelView} />
         </div>
       );
     }
@@ -427,6 +499,47 @@ function ReportsPage() {
 
           <button
             type="button"
+            className={`reports-mobile-filter-btn reports-mobile-travel-btn${
+              travelView !== "expenses" ? " reports-mobile-filter-btn--active" : ""
+            }`}
+            onClick={() => {
+              const next =
+                travelView === "expenses"
+                  ? "both"
+                  : travelView === "both"
+                  ? "travel"
+                  : "expenses";
+              handleSelectTravelView(next);
+            }}
+            disabled={travelLoading}
+            aria-label={`Current view: ${travelView}. Tap to switch between Expenses, Both, and Travel.`}
+            title={
+              travelView === "travel"
+                ? "Viewing Travel Only (Tap to switch)"
+                : travelView === "both"
+                ? "Viewing Both (Tap to switch)"
+                : "Viewing Expenses Only (Tap to include travel)"
+            }
+          >
+            <AppIcon
+              name={
+                travelView === "travel"
+                  ? "plane"
+                  : travelView === "both"
+                  ? "layers"
+                  : "briefcase"
+              }
+              size={18}
+            />
+            {travelView !== "expenses" && (
+              <span style={{ fontSize: "10px", padding: "0 2px" }}>
+                {travelView === "travel" ? "Trv" : "All"}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
             className={`reports-mobile-filter-btn${
               isMobileFilterOpen ? " reports-mobile-filter-btn--active" : ""
             }`}
@@ -450,6 +563,46 @@ function ReportsPage() {
         </div>
 
         <div className="reports-workspace-actions">
+          <div className="reports-data-source-segmented" role="radiogroup" aria-label="Select report view mode">
+            <button
+              type="button"
+              className={`reports-source-pill${travelView === "expenses" ? " reports-source-pill--active" : ""}`}
+              onClick={() => handleSelectTravelView("expenses")}
+              aria-checked={travelView === "expenses"}
+              role="radio"
+              title="Show regular expenses only. Hides all travel."
+            >
+              <AppIcon name="briefcase" size={14} />
+              <span>Expenses Only</span>
+            </button>
+            <button
+              type="button"
+              className={`reports-source-pill reports-source-pill--both${travelView === "both" ? " reports-source-pill--active" : ""}`}
+              onClick={() => handleSelectTravelView("both")}
+              aria-checked={travelView === "both"}
+              role="radio"
+              disabled={travelLoading}
+              title="Combine regular expenses and travel tracker trips."
+            >
+              <AppIcon name="layers" size={14} />
+              <span>Both</span>
+              {travelTrips.length > 0 && <span className="reports-source-badge">{travelTrips.length}</span>}
+            </button>
+            <button
+              type="button"
+              className={`reports-source-pill reports-source-pill--travel${travelView === "travel" ? " reports-source-pill--active" : ""}`}
+              onClick={() => handleSelectTravelView("travel")}
+              aria-checked={travelView === "travel"}
+              role="radio"
+              disabled={travelLoading}
+              title="Show travel tracker expenses only."
+            >
+              <AppIcon name="plane" size={14} />
+              <span>Travel Only</span>
+              {travelTrips.length > 0 && <span className="reports-source-badge">{travelTrips.length}</span>}
+            </button>
+          </div>
+
           <button
             type="button"
             className={
@@ -492,6 +645,12 @@ function ReportsPage() {
       {error && (
         <div className="error-box">
           <p>{error}</p>
+        </div>
+      )}
+
+      {travelError && (
+        <div className="error-box">
+          <p>{travelError}</p>
         </div>
       )}
 
