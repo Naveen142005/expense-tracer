@@ -22574,6 +22574,120 @@ table th.table-cell--description .table-sort-btn {
   padding: 0 !important;
 }
 
+/* =====================================================
+   Spending Details Modal — 4-column layout when Date is shown
+   (e.g. Yearly / Monthly aggregation view)
+===================================================== */
+.analytics-detail-period__table--with-date th:nth-child(1),
+.analytics-detail-period__table--with-date td:nth-child(1) {
+  width: 20% !important;
+  text-align: left !important;
+  white-space: nowrap !important;
+}
+
+.analytics-detail-period__table--with-date th:nth-child(1) .analytics-detail-sort-button {
+  justify-content: flex-start;
+  text-align: left;
+  padding-left: 10px;
+}
+
+.analytics-detail-period__table--with-date th:nth-child(2),
+.analytics-detail-period__table--with-date td:nth-child(2) {
+  width: 44% !important;
+  text-align: left !important;
+}
+
+.analytics-detail-period__table--with-date th:nth-child(2) .analytics-detail-sort-button {
+  justify-content: flex-start;
+  text-align: left;
+  padding-left: 8px;
+}
+
+.analytics-detail-period__table--with-date th:nth-child(3),
+.analytics-detail-period__table--with-date td:nth-child(3) {
+  width: 18% !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+}
+
+.analytics-detail-period__table--with-date th:nth-child(3) .analytics-detail-sort-button {
+  justify-content: center;
+  text-align: center;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+.analytics-detail-period__table--with-date th:last-child,
+.analytics-detail-period__table--with-date td:last-child {
+  width: 18% !important;
+  padding-left: 4px !important;
+  padding-right: 10px !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+}
+
+.analytics-detail-period__table--with-date th:last-child .analytics-detail-sort-button {
+  justify-content: flex-end;
+  text-align: right;
+  padding-left: 4px;
+  padding-right: 10px;
+}
+
+.analytics-detail-item-date {
+  display: inline-block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--reports-muted, #64748b);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .analytics-detail-period__table--with-date th:nth-child(1),
+  .analytics-detail-period__table--with-date td:nth-child(1) {
+    width: 23% !important;
+    padding-left: 6px !important;
+    padding-right: 3px !important;
+  }
+
+  .analytics-detail-period__table--with-date th:nth-child(1) .analytics-detail-sort-button {
+    padding-left: 6px;
+    padding-right: 3px;
+  }
+
+  .analytics-detail-period__table--with-date th:nth-child(2),
+  .analytics-detail-period__table--with-date td:nth-child(2) {
+    width: 39% !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  .analytics-detail-period__table--with-date th:nth-child(2) .analytics-detail-sort-button {
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
+  .analytics-detail-period__table--with-date th:nth-child(3),
+  .analytics-detail-period__table--with-date td:nth-child(3) {
+    width: 19% !important;
+    padding-left: 2px !important;
+    padding-right: 2px !important;
+  }
+
+  .analytics-detail-period__table--with-date th:last-child,
+  .analytics-detail-period__table--with-date td:last-child {
+    width: 19% !important;
+    padding-left: 2px !important;
+    padding-right: 6px !important;
+  }
+
+  .analytics-detail-item-date {
+    font-size: 11px;
+  }
+}
+
 
 /* =====================================================
    Spend Overview mobile point details — no SVG overlap

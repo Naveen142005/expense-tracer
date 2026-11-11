@@ -482,28 +482,66 @@ function getDetailItemName(item) {
   return String(item.name || item.description || "-").trim();
 }
 
-function compareDetailItems(first, second, key) {
-  if (key === "price") {
-    return toNumber(first.price) - toNumber(second.price);
+function formatItemDate(value = "") {
+  if (!value) return "-";
+  const parts = String(value).split("-").map(Number);
+  if (parts.length === 3 && parts[0] && parts[1] && parts[2]) {
+    const [year, month, day] = parts;
+    return new Intl.DateTimeFormat(undefined, {
+      day: "2-digit",
+      month: "short",
+    }).format(new Date(year, month - 1, day));
   }
+  const dateObj = new Date(value);
+  if (!isNaN(dateObj.getTime())) {
+    return new Intl.DateTimeFormat(undefined, {
+      day: "2-digit",
+      month: "short",
+    }).format(dateObj);
+  }
+  return value;
+}
 
-  if (key === "payment") {
-    return formatPaymentName(first.paymentType).localeCompare(
-      formatPaymentName(second.paymentType),
+function compareDetailItems(first, second, key) {
+  if (key === "date") {
+    const diff = String(first.date || "").localeCompare(String(second.date || ""));
+    if (diff !== 0) return diff;
+    return getDetailItemName(first).localeCompare(
+      getDetailItemName(second),
       undefined,
       { sensitivity: "base", numeric: true }
     );
   }
 
-  return getDetailItemName(first).localeCompare(
+  if (key === "price") {
+    const diff = toNumber(first.price) - toNumber(second.price);
+    if (diff !== 0) return diff;
+    return String(first.date || "").localeCompare(String(second.date || ""));
+  }
+
+  if (key === "payment") {
+    const diff = formatPaymentName(first.paymentType).localeCompare(
+      formatPaymentName(second.paymentType),
+      undefined,
+      { sensitivity: "base", numeric: true }
+    );
+    if (diff !== 0) return diff;
+    return String(first.date || "").localeCompare(String(second.date || ""));
+  }
+
+  const diff = getDetailItemName(first).localeCompare(
     getDetailItemName(second),
     undefined,
     { sensitivity: "base", numeric: true }
   );
+  if (diff !== 0) return diff;
+  return String(first.date || "").localeCompare(String(second.date || ""));
 }
 
-function SortablePeriodDetails({ period }) {
-  const [sortConfig, setSortConfig] = useState(null);
+function SortablePeriodDetails({ period, showDate = false }) {
+  const [sortConfig, setSortConfig] = useState(() =>
+    showDate ? { key: "date", direction: "asc" } : null
+  );
   const periodTotal = useMemo(
     () =>
       period.items.reduce(
@@ -578,9 +616,14 @@ function SortablePeriodDetails({ period }) {
       </div>
 
       <div className="analytics-detail-period__table-wrap">
-        <table className="analytics-detail-period__table">
+        <table
+          className={`analytics-detail-period__table${
+            showDate ? " analytics-detail-period__table--with-date" : ""
+          }`}
+        >
           <thead>
             <tr>
+              {showDate && <th scope="col">{renderSortHeader("Date", "date")}</th>}
               <th scope="col">{renderSortHeader("Item", "item")}</th>
               <th scope="col">{renderSortHeader("Payment", "payment")}</th>
               <th scope="col">{renderSortHeader("Price", "price")}</th>
@@ -590,9 +633,20 @@ function SortablePeriodDetails({ period }) {
             {sortedItems.map((item, index) => {
               const itemName = getDetailItemName(item);
               const isTravel = Boolean(item.isTravelLog);
+              const dateDisplay = formatItemDate(item.date);
 
               return (
                 <tr key={item.id || `${item.date}-${itemName}-${item.price}-${index}`}>
+                  {showDate && (
+                    <td className="analytics-detail-date-cell">
+                      <span
+                        className="analytics-detail-item-date"
+                        title={item.date || ""}
+                      >
+                        {dateDisplay}
+                      </span>
+                    </td>
+                  )}
                   <td>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
                       <span
@@ -732,6 +786,7 @@ function ExpenseDetailsModal({ selection, items, onClose }) {
               <SortablePeriodDetails
                 key={`${selection.detailType}-${selection.detailKey}-${period.value}`}
                 period={period}
+                showDate={selection.detailType === "month"}
               />
             ))
           ) : (
